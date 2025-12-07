@@ -4,6 +4,31 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [0.4.0] - 2025-12-07 (Pontanares)
+
+### Added
+- **UI Components and Views**
+  - Components: reusable UI elements for consistent interface design
+    - `footer.py` - site-wide footer with navigation and contact info
+    - `listing_card.py` - display key listing information (image, property name, location, price, availability)
+    - `login_form.py` - user authentication form with validation
+    - `navbar.py` – top navigation bar for main sections
+    - `search_filter.py` – filter panel to refine listings by criteria
+    - `searchbar.py` – keyword/location search input
+    - `signup_form.py` – registration form for new users 
+  - Views: full page interface combining components for specific functionality
+    - `home_view.py` – landing page with search tools and featured listings
+    - `listing_detail_view.py` – detailed page for individual listings with images, pricing, and amenities
+    - `login_view.py` – page containing login form for user access
+    - `signup_view.py` – page displaying signup form for account registration
+  **Added**
+    - docs/CHANGELOG.md - updated changes log
+
+  **Changed**
+    - README.md - updated version number
+
+---
+
 ## [0.3.0] - 2025-12-06 (Enimedez)
 
 ### Added
@@ -98,12 +123,22 @@ When making new commits or releases:
 ### Example Entry Format
 
 ```markdown
-## [0.2.1] - 2025-12-10 (TeamMemberName)
+## [0.2.1] - 2025-12-10 (Pontanares)
 
 ### Added
-- New search filter functionality (`views/search_view.py`)
-- Price range filtering for listings
-- Location-based search
+- **App** (`components and views`)
+  - User management with secure password hashing
+  - User profile updates with email validation
+  - Listing management (CRUD operations)
+  - Reservation system
+  - Password reset tokens
+  - Activity logging
+  - Reports management
+  - Admin utilities
+  - Model-compatible adapter functions
+  - Foreign key constraints and data integrity
+  - **Components**: footer, listing_card, login_form, navbar, search_filter, searchbar, signup_form
+  - **Views**: home_view, listing_detail_view, login_view, signup_view
 
 ### Changed
 - Updated listing card styling
@@ -116,8 +151,4 @@ When making new commits or releases:
 ### Removed
 - Legacy search implementation
 ```
-
----
-
-**Last Updated**: December 6, 2025
 **Repository**: [campusKubo-Boarding-Bedspace-Finder-for-Students](https://github.com/ferenimedez-stab/campusKubo-Boarding-Bedspace-Finder-for-Students)
