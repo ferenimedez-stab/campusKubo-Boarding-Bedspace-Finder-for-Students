@@ -139,12 +139,22 @@ When making new commits or releases:
 ### Example Entry Format
 
 ```markdown
-## [0.2.1] - 2025-12-10 (TeamMemberName)
+## [0.2.1] - 2025-12-10 (Pontanares)
 
 ### Added
-- New search filter functionality (`views/search_view.py`)
-- Price range filtering for listings
-- Location-based search
+- **App** (`components and views`)
+  - User management with secure password hashing
+  - User profile updates with email validation
+  - Listing management (CRUD operations)
+  - Reservation system
+  - Password reset tokens
+  - Activity logging
+  - Reports management
+  - Admin utilities
+  - Model-compatible adapter functions
+  - Foreign key constraints and data integrity
+  - **Components**: footer, listing_card, login_form, navbar, search_filter, searchbar, signup_form
+  - **Views**: home_view, listing_detail_view, login_view, signup_view
 
 ### Changed
 - Updated listing card styling
