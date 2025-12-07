@@ -4,28 +4,44 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [1.5.0] - 2025-12-08 (Enimedez)
+
+### Added
+- `app/main.py` — Major update pushed: refactored application entry point and startup flow.
+
+### Changed
+- Updated `README.md` version to `v1.5.0` to reflect the main.py push and release.
+
+---
+
+## [0.4.1] - 2025-12-07 (Pontanares)
+
+### Added
+- **Views & UX**
+  - `app/views/home_view.py` — Implemented home view with featured listings and calls-to-action.
+  - `app/views/listing_detail_view.py`, `app/views/listing_detail_extended_view.py` — Added listing detail pages with image gallery and contact/reservation actions.
+  - `app/views/login_view.py`, `app/views/signup_view.py` — Implemented authentication views with improved validation flows and redirects.
+
+### Changed
+- **UX Improvements**
+  - Implemented enhanced user experience and validation across login/signup flows and listing interactions.
+
+---
+
 ## [0.4.0] - 2025-12-07 (Pontanares)
 
 ### Added
-- **UI Components and Views**
-  - Components: reusable UI elements for consistent interface design
-    - `footer.py` - site-wide footer with navigation and contact info
-    - `listing_card.py` - display key listing information (image, property name, location, price, availability)
-    - `login_form.py` - user authentication form with validation
-    - `navbar.py` – top navigation bar for main sections
-    - `search_filter.py` – filter panel to refine listings by criteria
-    - `searchbar.py` – keyword/location search input
-    - `signup_form.py` – registration form for new users 
-  - Views: full page interface combining components for specific functionality
-    - `home_view.py` – landing page with search tools and featured listings
-    - `listing_detail_view.py` – detailed page for individual listings with images, pricing, and amenities
-    - `login_view.py` – page containing login form for user access
-    - `signup_view.py` – page displaying signup form for account registration
-  **Added**
-    - docs/CHANGELOG.md - updated changes log
-
-  **Changed**
-    - README.md - updated version number
+- **UI Components**
+  - `app/components/footer.py` — Implemented footer component with branding and contact information.
+  - `app/components/navbar.py` — Created navbar component for site-wide navigation (login/register links).
+  - `app/components/login_form.py` — Developed `LoginForm` with validation and user feedback.
+  - `app/components/signup_form.py` — Added `SignupForm` with role selection and live password validation.
+  - `app/components/reservation_form.py` — Introduced `ReservationForm` for booking listings with date selection.
+  - `app/components/advanced_filters.py` — Built `AdvancedFilters` supporting multi-criteria property search.
+  - `app/components/searchbar.py` — Added `SearchBar` for keyword and location-based queries.
+  - `app/components/search_filter.py` — Implemented `SearchFilter` for quick access filter options.
+  - `app/components/signup_banner.py` — Added `SignupBanner` to promote account creation on the homepage.
+  - `app/components/listing_card.py` — Updated `ListingCard` to display property details, images, price, and action buttons.
 
 ---
 
@@ -151,4 +167,8 @@ When making new commits or releases:
 ### Removed
 - Legacy search implementation
 ```
+
+---
+
+**Last Updated**: December 8, 2025
 **Repository**: [campusKubo-Boarding-Bedspace-Finder-for-Students](https://github.com/ferenimedez-stab/campusKubo-Boarding-Bedspace-Finder-for-Students)

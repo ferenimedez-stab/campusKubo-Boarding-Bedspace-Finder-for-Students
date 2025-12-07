@@ -266,6 +266,6 @@ For questions or issues:
 
 ---
 
-**Last Updated**: December 7, 2025
+**Last Updated**: December 8, 2025
 
-**Version**: v0.4.0
+**Version**: v1.5.0
