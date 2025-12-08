@@ -1,0 +1,770 @@
+"""
+CampusKubo - Main Application Entry Point
+Integrated with modular architecture
+"""
+import flet as ft
+import os
+import shutil
+from storage.db import init_db
+
+# Import all views
+from views.home_view import HomeView
+from views.login_view import LoginView
+from views.signup_view import SignupView
+from views.listing_detail_view import ListingDetailView
+from views.listing_detail_extended_view import ListingDetailExtendedView
+from views.browse_view import BrowseView
+from views.pm_dashboard_view import PMDashboardView
+from views.user_profile_view import UserProfileView
+from views.pm_profile_view import PMProfileView
+from views.admin_dashboard_view import AdminDashboardView
+from views.admin_profile_view import AdminProfileView
+from views.admin_listings_view import AdminListingsView
+from views.admin_reservations_view import AdminReservationsView
+from views.admin_reports_view import AdminReportsView
+from views.admin_pm_verification_view import AdminPMVerificationView
+from views.admin_users_view import AdminUsersView
+from views.admin_payments_view import AdminPaymentsView
+from components.listing_card import ListingCard
+from components.login_form import LoginForm
+
+from services.listing_service import ListingService
+from state.session_state import SessionState
+
+
+def main(page: ft.Page):
+    """Main application entry point"""
+
+    # Page configuration
+    page.title = "CampusKubo"
+    page.theme_mode = ft.ThemeMode.LIGHT
+    # Make page content stretch to available width and start from top
+    page.horizontal_alignment = ft.CrossAxisAlignment.STRETCH
+    page.vertical_alignment = ft.MainAxisAlignment.START
+
+    # Allow window resizing so users can change window size and have scrollbars show
+    if hasattr(page, 'window_resizable'):
+        try:
+            page.window.resizable = True
+        except Exception:
+            pass
+    page.bgcolor = "#F5F7FA"
+    page.padding = 0
+
+    # Initialize database
+    init_db()
+
+    # Ensure at least one admin exists
+    from services.auth_service import AuthService
+    AuthService.ensure_admin_exists()
+
+    # Initialize session state
+    session = SessionState(page)
+    listing_service = ListingService()
+
+    # ==================== TENANT DASHBOARD ====================
+    def tenant_dashboard():
+        """Tenant dashboard - browse all listings"""
+        user_email = session.get_email() or "Guest"
+
+        # Get all listings
+        all_listings = listing_service.get_all_listings()
+
+        # Create ListingCard instances
+        listing_cards = []
+        for listing in all_listings:
+            image_url = listing.images[0] if listing.images else ""
+            is_available = listing_service.check_availability(listing.id)
+
+            card = ListingCard(
+                listing=listing,
+                image_url=image_url,
+                is_available=is_available,
+                on_click=lambda _e, lid=listing.id: page.go(f"/listing/{lid}")
+            )
+            listing_cards.append(card.build_card())
+
+        # If no listings, show placeholder
+        if not listing_cards:
+            listing_cards.append(
+                ft.Container(
+                    padding=40,
+                    content=ft.Column(
+                        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                        spacing=15,
+                        controls=[
+                            ft.Icon(ft.Icons.HOME, size=64, color="#999"),
+                            ft.Text(
+                                "No listings available yet",
+                                size=20,
+                                weight=ft.FontWeight.BOLD,
+                                color="#666"
+                            ),
+                            ft.Text(
+                                "Check back later for new listings!",
+                                size=14,
+                                color="#999"
+                            )
+                        ]
+                    )
+                )
+            )
+
+        # Listings container
+        listings_container = ft.Row(
+            spacing=15,
+            wrap=True,
+            alignment=ft.MainAxisAlignment.CENTER,
+            controls=listing_cards
+        )
+
+        # Build tenant dashboard view
+        return ft.View(
+            "/tenant",
+            padding=0,
+            scroll=ft.ScrollMode.AUTO,
+            bgcolor="#F5F7FA",
+            controls=[
+                ft.Container(
+                    bgcolor="#FFFFFF",
+                    padding=ft.padding.symmetric(horizontal=40, vertical=20),
+                    shadow=ft.BoxShadow(
+                        spread_radius=1,
+                        blur_radius=10,
+                        color="#00000008",
+                        offset=ft.Offset(0, 2)
+                    ),
+                    content=ft.Row(
+                        alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                        controls=[
+                            ft.Column(
+                                spacing=5,
+                                controls=[
+                                    ft.Text(
+                                        "Browse Listings",
+                                        size=28,
+                                        weight=ft.FontWeight.BOLD,
+                                        color="#1A1A1A"
+                                    ),
+                                    ft.Text(user_email, size=14, color="#666")
+                                ]
+                            ),
+                            ft.Row(
+                                spacing=10,
+                                controls=[
+                                    ft.IconButton(
+                                        icon=ft.Icons.PERSON,
+                                        tooltip="Profile",
+                                        on_click=lambda _: page.go("/profile")
+                                    ) if session.is_logged_in() else ft.Container(),
+                                    ft.OutlinedButton(
+                                        "Logout" if session.is_logged_in() else "Login",
+                                        icon=ft.Icons.LOGOUT if session.is_logged_in() else ft.Icons.LOGIN,
+                                        on_click=lambda _: page.go("/logout") if session.is_logged_in() else page.go("/login")
+                                    )
+                                ]
+                            )
+                        ]
+                    )
+                ),
+                ft.Container(
+                    padding=40,
+                    content=ft.Column(
+                        spacing=20,
+                        controls=[
+                            ft.Row(
+                                controls=[
+                                    ft.Icon(ft.Icons.SEARCH, size=24, color="#0078FF"),
+                                    ft.Text(
+                                        "Available Listings",
+                                        size=24,
+                                        weight=ft.FontWeight.BOLD,
+                                        color="#1A1A1A"
+                                    )
+                                ],
+                                spacing=10
+                            ),
+                            listings_container
+                        ]
+                    )
+                )
+            ]
+        )
+    # ==================== ADD/EDIT LISTING VIEW ====================
+    def add_edit_listing_view(listing_id=None):
+        """Add or edit listing view"""
+        user_id = session.get_user_id()
+        if not user_id:
+            page.go("/login")
+            return None
+
+        is_edit = listing_id is not None
+        listing = None
+        existing_images = []
+
+        if is_edit:
+            from storage.db import get_listing_by_id, get_listing_images
+            listing = get_listing_by_id(listing_id)
+            if not listing or listing["owner_id"] != user_id:
+                snack_bar = ft.SnackBar(ft.Text("Listing not found or access denied"))
+                page.open(snack_bar)
+                page.update()
+                page.go("/pm")
+                return None
+            existing_images = get_listing_images(listing_id)
+
+        # Form fields
+        address_field = ft.TextField(
+            label="Address *",
+            width=700,
+            height=50,
+            value=listing["address"] if listing else "",
+            autofocus=True,
+            prefix_icon=ft.Icons.LOCATION_ON,
+            border_radius=10,
+            bgcolor="#FFFFFF",
+            border_color="#E0E0E0",
+            focused_border_color="#0078FF",
+        )
+
+        price_field = ft.TextField(
+            label="Price per month (₱) *",
+            width=700,
+            height=50,
+            value=str(listing["price"]) if listing else "",
+            keyboard_type=ft.KeyboardType.NUMBER,
+            prefix_icon=ft.Icons.ATTACH_MONEY,
+            border_radius=10,
+            bgcolor="#FFFFFF",
+            border_color="#E0E0E0",
+            focused_border_color="#0078FF",
+        )
+
+        description_field = ft.TextField(
+            label="Description *",
+            width=700,
+            multiline=True,
+            min_lines=4,
+            max_lines=8,
+            value=listing["description"] if listing else "",
+            border_radius=10,
+            bgcolor="#FFFFFF",
+            border_color="#E0E0E0",
+            focused_border_color="#0078FF",
+        )
+
+        lodging_details_field = ft.TextField(
+            label="Lodging Details (e.g., Room type, amenities, rules)",
+            width=700,
+            multiline=True,
+            min_lines=3,
+            max_lines=6,
+            value=listing["lodging_details"] if listing else "",
+            border_radius=10,
+            bgcolor="#FFFFFF",
+            border_color="#E0E0E0",
+            focused_border_color="#0078FF",
+        )
+
+        uploaded_files = []
+        image_previews = ft.Row(wrap=True, spacing=10)
+
+        def handle_file_picker_result(e: ft.FilePickerResultEvent):
+            if e.files:
+                for file in e.files:
+                    # Create uploads directory
+                    upload_dir = "uploads"
+                    if not os.path.exists(upload_dir):
+                        os.makedirs(upload_dir)
+
+                    # Save file
+                    file_path = os.path.join(upload_dir, file.name)
+                    shutil.copy(file.path, file_path)
+                    uploaded_files.append(file_path)
+
+                    # Add preview
+                    image_previews.controls.append(
+                        ft.Container(
+                            width=150,
+                            height=150,
+                            border_radius=8,
+                            clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
+                            content=ft.Stack(
+                                controls=[
+                                    ft.Image(
+                                        src=file_path,
+                                        width=150,
+                                        height=150,
+                                        fit=ft.ImageFit.COVER
+                                    ),
+                                    ft.Container(
+                                        content=ft.IconButton(
+                                            icon=ft.Icons.CLOSE,
+                                            icon_color="white",
+                                            bgcolor="#00000080",
+                                            on_click=lambda _evt, path=file_path: remove_image(path)
+                                        ),
+                                        alignment=ft.alignment.top_right
+                                    )
+                                ]
+                            )
+                        )
+                    )
+                page.update()
+
+        def remove_image(path):
+            if path in uploaded_files:
+                uploaded_files.remove(path)
+            if os.path.exists(path) and path not in existing_images:
+                try:
+                    os.remove(path)
+                except:
+                    pass
+
+            # Rebuild previews
+            image_previews.controls.clear()
+            for file_path in uploaded_files:
+                if os.path.exists(file_path):
+                    image_previews.controls.append(
+                        ft.Container(
+                            width=150,
+                            height=150,
+                            border_radius=8,
+                            clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
+                            content=ft.Stack(
+                                controls=[
+                                    ft.Image(
+                                        src=file_path,
+                                        width=150,
+                                        height=150,
+                                        fit=ft.ImageFit.COVER
+                                    ),
+                                    ft.Container(
+                                        content=ft.IconButton(
+                                            icon=ft.Icons.CLOSE,
+                                            icon_color="white",
+                                            bgcolor="#00000080",
+                                            on_click=lambda _evt, p=file_path: remove_image(p)
+                                        ),
+                                        alignment=ft.alignment.top_right
+                                    )
+                                ]
+                            )
+                        )
+                    )
+            page.update()
+
+        # Load existing images
+        for img_path in existing_images:
+            if os.path.exists(img_path):
+                uploaded_files.append(img_path)
+                image_previews.controls.append(
+                    ft.Container(
+                        width=150,
+                        height=150,
+                        border_radius=8,
+                        clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
+                        content=ft.Stack(
+                            controls=[
+                                ft.Image(
+                                    src=img_path,
+                                    width=150,
+                                    height=150,
+                                    fit=ft.ImageFit.COVER
+                                ),
+                                ft.Container(
+                                    content=ft.IconButton(
+                                        icon=ft.Icons.CLOSE,
+                                        icon_color="white",
+                                        bgcolor="#00000080",
+                                        on_click=lambda _evt, p=img_path: remove_image(p)
+                                    ),
+                                    alignment=ft.alignment.top_right
+                                )
+                            ]
+                        )
+                    )
+                )
+
+        file_picker = ft.FilePicker(on_result=handle_file_picker_result)
+        page.overlay.append(file_picker)
+
+        msg = ft.Text(" ", size=12)
+
+        def save_listing(_evt):
+            # Validation
+            if not address_field.value:
+                msg.value = "Address is required"
+                msg.color = "red"
+                msg.update()
+                return
+
+            if not price_field.value or not price_field.value.replace(".", "").isdigit():
+                msg.value = "Valid price is required"
+                msg.color = "red"
+                msg.update()
+                return
+
+            if not description_field.value:
+                msg.value = "Description is required"
+                msg.color = "red"
+                msg.update()
+                return
+
+            if not uploaded_files:
+                msg.value = "At least one image is required"
+                msg.color = "red"
+                msg.update()
+                return
+
+            price = float(price_field.value)
+
+            if is_edit:
+                # ensure listing_id is not None and pass an int to the service
+                assert listing_id is not None
+                lid = int(listing_id)
+                success, message = listing_service.update_existing_listing(
+                    lid, user_id,
+                    address_field.value,
+                    price,
+                    description_field.value,
+                    lodging_details_field.value or "",
+                    uploaded_files
+                )
+                action = "updated"
+            else:
+                success, message, new_listing_id = listing_service.create_new_listing(
+                    user_id,
+                    address_field.value,
+                    price,
+                    description_field.value,
+                    lodging_details_field.value or "",
+                    uploaded_files
+                )
+                action = "created"
+
+            if success:
+                snack_bar = ft.SnackBar(
+                    content=ft.Row(
+                        controls=[
+                            ft.Icon(ft.Icons.CHECK_CIRCLE, color="white"),
+                            ft.Text(f"Listing {action} successfully!", color="white")
+                        ],
+                        spacing=10
+                    ),
+                    bgcolor="#4CAF50",
+                    action="OK",
+                    action_color="white"
+                )
+                page.open(snack_bar)
+                page.update()
+                page.go("/pm")
+            else:
+                msg.value = message
+                msg.color = "red"
+                msg.update()
+
+        return ft.View(
+            f"/pm/add" if not is_edit else f"/pm/edit/{listing_id}",
+            padding=0,
+            scroll=ft.ScrollMode.AUTO,
+            bgcolor="#F5F7FA",
+            controls=[
+                ft.Container(
+                    bgcolor="#FFFFFF",
+                    padding=ft.padding.symmetric(horizontal=40, vertical=20),
+                    shadow=ft.BoxShadow(
+                        spread_radius=1,
+                        blur_radius=10,
+                        color="#00000008",
+                        offset=ft.Offset(0, 2)
+                    ),
+                    content=ft.Row(
+                        controls=[
+                            ft.IconButton(
+                                icon=ft.Icons.ARROW_BACK,
+                                icon_color="#666",
+                                tooltip="Back to Dashboard",
+                                on_click=lambda _evt: page.go("/pm")
+                            ),
+                            ft.Row(
+                                spacing=10,
+                                controls=[
+                                    ft.Icon(
+                                        ft.Icons.ADD_CIRCLE if not is_edit else ft.Icons.EDIT,
+                                        size=28,
+                                        color="#0078FF"
+                                    ),
+                                    ft.Text(
+                                        "Edit Listing" if is_edit else "Add New Listing",
+                                        size=28,
+                                        weight=ft.FontWeight.BOLD,
+                                        color="#1A1A1A"
+                                    )
+                                ]
+                            )
+                        ]
+                    )
+                ),
+                ft.Container(
+                    padding=40,
+                    content=ft.Column(
+                        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                        spacing=25,
+                        controls=[
+                            ft.Container(
+                                width=800,
+                                padding=40,
+                                bgcolor="#FFFFFF",
+                                border_radius=16,
+                                shadow=ft.BoxShadow(
+                                    spread_radius=1,
+                                    blur_radius=20,
+                                    color="#00000015",
+                                    offset=ft.Offset(0, 4)
+                                ),
+                                content=ft.Column(
+                                    spacing=20,
+                                    controls=[
+                                        address_field,
+                                        price_field,
+                                        description_field,
+                                        lodging_details_field,
+                                        ft.Divider(height=1),
+                                        ft.Row(
+                                            controls=[
+                                                ft.Icon(ft.Icons.IMAGE, size=24, color="#0078FF"),
+                                                ft.Text(
+                                                    "Images *",
+                                                    size=18,
+                                                    weight=ft.FontWeight.BOLD,
+                                                    color="#1A1A1A"
+                                                )
+                                            ],
+                                            spacing=10
+                                        ),
+                                        ft.ElevatedButton(
+                                            "Upload Images",
+                                            icon=ft.Icons.UPLOAD_FILE,
+                                            style=ft.ButtonStyle(
+                                                color="white",
+                                                bgcolor="#0078FF",
+                                            ),
+                                            on_click=lambda _evt: file_picker.pick_files(
+                                                allowed_extensions=["jpg", "jpeg", "png", "gif"],
+                                                allow_multiple=True
+                                            )
+                                        ),
+                                        image_previews,
+                                        ft.Divider(height=1),
+                                        msg,
+                                        ft.Row(
+                                            spacing=15,
+                                            controls=[
+                                                ft.ElevatedButton(
+                                                    "Save Listing",
+                                                    width=200,
+                                                    height=50,
+                                                    icon=ft.Icons.SAVE,
+                                                    style=ft.ButtonStyle(
+                                                        color="white",
+                                                        bgcolor="#0078FF",
+                                                    ),
+                                                    on_click=save_listing
+                                                ),
+                                                ft.OutlinedButton(
+                                                    "Cancel",
+                                                    width=200,
+                                                    height=50,
+                                                    icon=ft.Icons.CANCEL,
+                                                    on_click=lambda _evt: page.go("/pm")
+                                                )
+                                            ]
+                                        )
+                                    ]
+                                )
+                            )
+                        ]
+                    )
+                )
+            ]
+        )
+
+    # ==================== ROUTE HANDLER ====================
+    def route_change(_route):
+        """Handle route changes"""
+        page.views.clear()
+
+        # Automatic admin redirection from home
+        if page.route == "/":
+            if session.is_admin():
+                page.go("/admin")
+                return
+            elif session.is_property_manager():
+                page.go("/pm")
+                return
+            elif session.is_logged_in():
+                page.go("/tenant")
+                return
+            else:
+                view = HomeView(page).build()
+                if view:
+                    page.views.append(view)
+
+        # Login
+        elif page.route == "/login":
+            view = LoginView(page).build()
+            if view:
+                page.views.append(view)
+
+        # Signup
+        elif page.route == "/signup":
+            view = SignupView(page).build()
+            if view:
+                page.views.append(view)
+
+        # Tenant Dashboard
+        elif page.route == "/tenant":
+            view = tenant_dashboard()
+            if view:
+                page.views.append(view)
+
+        # User Profile
+        elif page.route == "/profile":
+            view = UserProfileView(page).build()
+            if view:
+                page.views.append(view)
+
+        # PM Dashboard
+        elif page.route == "/pm":
+            view = PMDashboardView(page).build()
+            if view:
+                page.views.append(view)
+
+        # PM Profile
+        elif page.route == "/pm/profile":
+            view = PMProfileView(page).build()
+            if view:
+                page.views.append(view)
+
+        # Add Listing
+        elif page.route == "/pm/add":
+            view = add_edit_listing_view()
+            if view:
+                page.views.append(view)
+
+        # Edit Listing
+        elif page.route.startswith("/pm/edit/"):
+            try:
+                listing_id = int(page.route.split("/")[-1])
+            except ValueError:
+                page.go("/tenant")
+                return
+            view = add_edit_listing_view(listing_id)
+            if view:
+                page.views.append(view)
+
+        # Listing Detail
+        elif page.route.startswith("/listing/"):
+            try:
+                listing_id = int(page.route.split("/")[-1])
+            except ValueError:
+                page.go("/tenant")
+                return
+            # Use enhanced detail view for better guest experience
+            view = ListingDetailExtendedView(page, listing_id).build()
+            if view:
+                page.views.append(view)
+
+        # Browse Listings (guest-accessible)
+        elif page.route == "/browse":
+            view = BrowseView(page).build()
+            if view:
+                page.views.append(view)
+
+        # Admin Dashboard
+        elif page.route == "/admin":
+            if not session.is_admin():
+                page.go("/login")
+                return
+            view = AdminDashboardView(page).build()
+            if view:
+                page.views.append(view)
+
+        # Admin Listings
+        elif page.route == "/admin_listings":
+            if not session.is_admin():
+                page.go("/login")
+                return
+            view = AdminListingsView(page).build()
+            if view:
+                page.views.append(view)
+
+        # Admin Reservations
+        elif page.route == "/admin_reservations":
+            if not session.is_admin():
+                page.go("/login")
+                return
+            view = AdminReservationsView(page).build()
+            if view:
+                page.views.append(view)
+
+        # Admin Payments
+        elif page.route == "/admin_payments":
+            if not session.is_admin():
+                page.go("/login")
+                return
+            view = AdminPaymentsView(page).build()
+            if view:
+                page.views.append(view)
+
+        # Admin Reports
+        elif page.route == "/admin_reports":
+            if not session.is_admin():
+                page.go("/login")
+                return
+            view = AdminReportsView(page).build()
+            if view:
+                page.views.append(view)
+
+        # Admin PM Verification
+        elif page.route == "/admin_pm_verification":
+            if not session.is_admin():
+                page.go("/login")
+                return
+            view = AdminPMVerificationView(page).build()
+            if view:
+                page.views.append(view)
+
+        # Admin Users
+        elif page.route == "/admin_users":
+            if not session.is_admin():
+                page.go("/login")
+                return
+            view = AdminUsersView(page).build()
+            if view:
+                page.views.append(view)
+
+        # Admin Profile
+        elif page.route == "/admin_profile":
+            if not session.is_admin():
+                page.go("/login")
+                return
+            view = AdminProfileView(page).build()
+            if view:
+                page.views.append(view)
+
+        # Logout
+        elif page.route == "/logout":
+            session.logout()
+            page.go("/login")
+
+        page.update()
+
+    # Set route change handler
+    page.on_route_change = route_change
+    page.go(page.route)
+
+# Run the application
+if __name__ == "__main__":
+    ft.app(target=main, assets_dir="assets")

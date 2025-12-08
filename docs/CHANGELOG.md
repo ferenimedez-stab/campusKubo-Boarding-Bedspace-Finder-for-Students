@@ -4,6 +4,59 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [2.5.0] - 2025-12-08 (Enimedez)
+
+### Added
+- Bulk add of UI components and views for the user-facing app; see `app/components/` and `app/views/`.
+- Database improvements and seeding behavior: `app/storage/db.py` and `app/storage/seed_data.py` were extended to support additional features and richer demo data.
+
+### Changed
+- Updated README and documentation to reflect the new files and seeded demo data.
+
+
+---
+
+## [1.5.0] - 2025-12-08 (Enimedez)
+
+### Added
+- `app/main.py` — Major update pushed: refactored application entry point and startup flow.
+
+### Changed
+- Updated `README.md` version to `v1.5.0` to reflect the main.py push and release.
+
+---
+
+## [0.4.1] - 2025-12-07 (Pontanares)
+
+### Added
+- **Views & UX**
+  - `app/views/home_view.py` — Implemented home view with featured listings and calls-to-action.
+  - `app/views/listing_detail_view.py`, `app/views/listing_detail_extended_view.py` — Added listing detail pages with image gallery and contact/reservation actions.
+  - `app/views/login_view.py`, `app/views/signup_view.py` — Implemented authentication views with improved validation flows and redirects.
+
+### Changed
+- **UX Improvements**
+  - Implemented enhanced user experience and validation across login/signup flows and listing interactions.
+
+---
+
+## [0.4.0] - 2025-12-07 (Pontanares)
+
+### Added
+- **UI Components**
+  - `app/components/footer.py` — Implemented footer component with branding and contact information.
+  - `app/components/navbar.py` — Created navbar component for site-wide navigation (login/register links).
+  - `app/components/login_form.py` — Developed `LoginForm` with validation and user feedback.
+  - `app/components/signup_form.py` — Added `SignupForm` with role selection and live password validation.
+  - `app/components/reservation_form.py` — Introduced `ReservationForm` for booking listings with date selection.
+  - `app/components/advanced_filters.py` — Built `AdvancedFilters` supporting multi-criteria property search.
+  - `app/components/searchbar.py` — Added `SearchBar` for keyword and location-based queries.
+  - `app/components/search_filter.py` — Implemented `SearchFilter` for quick access filter options.
+  - `app/components/signup_banner.py` — Added `SignupBanner` to promote account creation on the homepage.
+  - `app/components/listing_card.py` — Updated `ListingCard` to display property details, images, price, and action buttons.
+
+---
+
 ## [0.3.0] - 2025-12-06 (Enimedez)
 
 ### Added
@@ -98,12 +151,22 @@ When making new commits or releases:
 ### Example Entry Format
 
 ```markdown
-## [0.2.1] - 2025-12-10 (TeamMemberName)
+## [0.2.1] - 2025-12-10 (Pontanares)
 
 ### Added
-- New search filter functionality (`views/search_view.py`)
-- Price range filtering for listings
-- Location-based search
+- **App** (`components and views`)
+  - User management with secure password hashing
+  - User profile updates with email validation
+  - Listing management (CRUD operations)
+  - Reservation system
+  - Password reset tokens
+  - Activity logging
+  - Reports management
+  - Admin utilities
+  - Model-compatible adapter functions
+  - Foreign key constraints and data integrity
+  - **Components**: footer, listing_card, login_form, navbar, search_filter, searchbar, signup_form
+  - **Views**: home_view, listing_detail_view, login_view, signup_view
 
 ### Changed
 - Updated listing card styling
@@ -119,5 +182,5 @@ When making new commits or releases:
 
 ---
 
-**Last Updated**: December 6, 2025
+**Last Updated**: December 8, 2025
 **Repository**: [campusKubo-Boarding-Bedspace-Finder-for-Students](https://github.com/ferenimedez-stab/campusKubo-Boarding-Bedspace-Finder-for-Students)
