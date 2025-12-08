@@ -1,5 +1,5 @@
 """
-Home/Landing page view with earthy color palette
+Home/Landing page view 
 """
 import flet as ft
 from typing import Any

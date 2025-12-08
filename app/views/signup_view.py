@@ -1,5 +1,5 @@
 """
-Signup view with earthy color palette
+Signup view 
 """
 import flet as ft
 from storage.db import create_user, validate_password, validate_email

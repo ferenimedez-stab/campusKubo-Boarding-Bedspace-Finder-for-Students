@@ -1,6 +1,6 @@
 # views/login_view.py
 """
-Login view with earthy color palette and forgot password functionality
+Login view 
 """
 import flet as ft
 from storage.db import validate_user

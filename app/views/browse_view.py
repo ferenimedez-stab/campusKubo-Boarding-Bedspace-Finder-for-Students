@@ -1,7 +1,7 @@
 # app/views/browse_view.py
 """
 Browse/Search view - displays all approved listings with filtering.
-Accessible to guests, tenants, and PMs. No login required.
+Accessible: guests, tenants, and PMs. No login required.
 """
 import flet as ft
 from typing import Any

@@ -2,9 +2,6 @@
 Property details view
 Updated from main.py property_details_view implementation
 """
-"""
-Property details view with earthy color palette
-"""
 import flet as ft
 from storage.db import get_property_by_id
 from config.colors import COLORS

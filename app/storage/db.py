@@ -1291,7 +1291,7 @@ def property_data():
         for email in pm_emails:
             cur.execute("SELECT id FROM users WHERE email = ?", (email,))
             if not cur.fetchone():
-                hashed = hash_password("PmPassword123!")  # Strong password that passes validation
+                hashed = hash_password("PmPassword123!")  
                 cur.execute("""
                     INSERT INTO users (email, password, role, full_name, created_at)
                     VALUES (?, ?, ?, ?, ?)
@@ -1306,10 +1306,8 @@ def property_data():
             print("[property_data] Not enough PMs created!")
             return
 
-        # Map emails → real IDs
         pm_map = {row["email"]: row["id"] for row in pm_rows}
 
-        # Count real listings (ones with a proper name)
         cur.execute("SELECT COUNT(*) as c FROM listings WHERE name IS NOT NULL AND name != '' AND name NOT LIKE 'Demo Listing%'")
         real_count = cur.fetchone()['c']
 
@@ -1668,13 +1666,13 @@ def get_properties(search_query: str = "", filters: dict = None) -> List[Dict]:
         params = []
         filters = filters or {}
 
-        # ── Search keyword ─────────────────────────────────────
+        # ── Search keyword ───────────────────────────
         if search_query := (search_query or "").strip():
             pattern = f"%{search_query}%"
             query += " AND (name LIKE ? OR location LIKE ? OR address LIKE ? OR description LIKE ?)"
             params.extend([pattern] * 4)
 
-        # ── Price ──────────────────────────────────────────────
+        # ── Price ────────────────────────────
         if filters.get("price_min") is not None:
             query += " AND price >= ?"
             params.append(filters["price_min"])
@@ -1682,7 +1680,7 @@ def get_properties(search_query: str = "", filters: dict = None) -> List[Dict]:
             query += " AND price <= ?"
             params.append(price_max)
 
-        # ── Room Type (Single, Double, etc.) ───────────────────
+        # ── Room Type (Single, Double, etc.) ───
         if room_types := filters.get("room_type"):
             if isinstance(room_types, str):
                 room_types = [room_types]
@@ -1694,7 +1692,7 @@ def get_properties(search_query: str = "", filters: dict = None) -> List[Dict]:
                 params.append(f'%"{rt}"%')
             query += ")"
 
-        # ── Amenities (WiFi, Air Conditioning, etc.) ───────────
+        # ── Amenities (WiFi, Air Conditioning, etc.) 
         if amenities := filters.get("amenities"):
             if isinstance(amenities, str):
                 amenities = [amenities]
@@ -1702,12 +1700,12 @@ def get_properties(search_query: str = "", filters: dict = None) -> List[Dict]:
                 query += " AND amenities LIKE ?"
                 params.append(f'%"{amenity}"%')   
 
-        # ── Availability status ───────────────────────────────
+        # ── Availability status ─────────────────────
         if availability := filters.get("availability"):
             query += " AND availability_status = ?"
             params.append(availability)
 
-        # ── Location ───────────────────────────────────────────
+        # ── Location ─────────────────────────
         if location := filters.get("location"):
             pattern = f"%{location.strip()}%"
             query += " AND (location LIKE ? OR address LIKE ?)"
@@ -1715,16 +1713,12 @@ def get_properties(search_query: str = "", filters: dict = None) -> List[Dict]:
 
         query += " ORDER BY created_at DESC"
 
-        # Uncomment next two lines only while testing
-        # print("[DEBUG SQL]", query)
-        # print("[DEBUG PARAMS]", params)
 
         cur.execute(query, params)
         rows = cur.fetchall()
         columns = [desc[0] for desc in cur.description]
         result = [dict(zip(columns, row)) for row in rows]
 
-        # Optional: turn JSON strings into real Python lists (nice for debugging)
         for prop in result:
             for field in ["amenities", "available_room_types"]:
                 if prop.get(field) and isinstance(prop[field], str):
