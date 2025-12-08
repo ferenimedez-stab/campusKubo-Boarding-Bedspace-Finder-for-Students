@@ -31,7 +31,7 @@ class Footer:
                                     ft.Text(
                                         "Find your perfect student accommodation",
                                         size=12,
-                                        color="#999"
+                                        color=ft.Colors.BLACK
                                     )
                                 ]
                             ),
@@ -44,9 +44,9 @@ class Footer:
                                         weight=ft.FontWeight.BOLD,
                                         color="white"
                                     ),
-                                    ft.TextButton("Home", style=ft.ButtonStyle(color="#999")),
-                                    ft.TextButton("Browse Listings", style=ft.ButtonStyle(color="#999")),
-                                    ft.TextButton("About Us", style=ft.ButtonStyle(color="#999")),
+                                    ft.TextButton("Home", style=ft.ButtonStyle(color=ft.Colors.BLACK)),
+                                    ft.TextButton("Browse Listings", style=ft.ButtonStyle(color=ft.Colors.BLACK)),
+                                    ft.TextButton("About Us", style=ft.ButtonStyle(color=ft.Colors.BLACK)),
                                 ]
                             ),
                             ft.Column(
@@ -58,8 +58,8 @@ class Footer:
                                         weight=ft.FontWeight.BOLD,
                                         color="white"
                                     ),
-                                    ft.Text("Email: info@campuskubo.com", size=12, color="#999"),
-                                    ft.Text("Phone: +63 123 456 7890", size=12, color="#999"),
+                                    ft.Text("Email: info@campuskubo.com", size=12, color=ft.Colors.BLACK),
+                                    ft.Text("Phone: +63 123 456 7890", size=12, color=ft.Colors.BLACK),
                                 ]
                             )
                         ]
@@ -68,7 +68,7 @@ class Footer:
                     ft.Text(
                         "© 2024 CampusKubo. All rights reserved.",
                         size=12,
-                        color="#666",
+                        color=ft.Colors.BLACK,
                         text_align=ft.TextAlign.CENTER
                     )
                 ]

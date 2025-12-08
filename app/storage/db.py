@@ -12,7 +12,13 @@ Features:
 import os
 import sys
 import hashlib
-from datetime import datetime
+try:
+    from argon2 import PasswordHasher
+    from argon2.exceptions import VerifyMismatchError
+    _PH = PasswordHasher()
+except Exception:
+    _PH = None
+from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Any
 
 import sqlite3
@@ -29,7 +35,39 @@ def _now_iso() -> str:
 
 def hash_password(password: str) -> str:
     """Return sha256 hex digest of password."""
+    # If Argon2 is available, produce an Argon2 encoded hash.
+    if _PH is not None:
+        try:
+            return _PH.hash(password)
+        except Exception:
+            pass
+    # Fallback to SHA-256 hex digest for older installs (legacy)
     return hashlib.sha256(password.encode("utf-8")).hexdigest()
+
+
+def verify_password(stored_hash: str, password: str) -> bool:
+    """
+    Verify a password against stored_hash.
+    Supports Argon2 encoded hashes and legacy SHA256 hex digests.
+    """
+    if not stored_hash:
+        return False
+    # Detect argon2 hash (argon2 encoded strings contain '$argon2')
+    try:
+        if isinstance(stored_hash, str) and '$argon2' in stored_hash:
+            if _PH is None:
+                # cannot verify argon2 without library
+                return False
+            try:
+                return _PH.verify(stored_hash, password)
+            except VerifyMismatchError:
+                return False
+            except Exception:
+                return False
+        # Fallback: assume legacy sha256 hex
+        return hashlib.sha256(password.encode('utf-8')).hexdigest() == stored_hash
+    except Exception:
+        return False
 
 # ---------- Connection management ----------
 def get_connection() -> sqlite3.Connection:
@@ -51,9 +89,66 @@ def get_connection() -> sqlite3.Connection:
 
     return conn
 
+
+def check_argon2_compatibility(fail_on_missing: bool = False) -> tuple[bool, str]:
+    """
+    Check whether Argon2 is available if Argon2 hashes exist in the database.
+    Returns (ok: bool, message: str). If fail_on_missing=True, raises RuntimeError when mismatch detected.
+    """
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT COUNT(*) as c FROM users WHERE password LIKE '%$argon2%';")
+        row = cur.fetchone()
+        count = int(row['c']) if row and 'c' in row.keys() else (row[0] if row else 0)
+        if count > 0 and _PH is None:
+            msg = f"Found {count} Argon2 password hashes but Argon2 library is not available"
+            if fail_on_missing:
+                raise RuntimeError(msg)
+            return False, msg
+        return True, "Argon2 compatibility OK"
+    except Exception as e:
+        return False, f"Argon2 compatibility check failed: {e}"
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+def check_db_pragmas() -> tuple[bool, str]:
+    """Verify expected PRAGMA settings (foreign_keys, journal_mode)."""
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute("PRAGMA foreign_keys;")
+        fk = cur.fetchone()
+        # PRAGMA foreign_keys returns a single row with 1 or 0
+        fk_ok = (fk[0] == 1) if fk else False
+        cur.execute("PRAGMA journal_mode;")
+        jm = cur.fetchone()
+        jm_ok = (jm and jm[0])
+        if not fk_ok:
+            return False, "foreign_keys PRAGMA is not enabled"
+        return True, f"PRAGMAs OK (journal_mode={jm[0]})"
+    except Exception as e:
+        return False, f"PRAGMA check failed: {e}"
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
 # ---------- Schema helpers ----------
 def column_exists(cursor: sqlite3.Cursor, table_name: str, column_name: str) -> bool:
-    cursor.execute(f"PRAGMA table_info('{table_name}')")
+    # Prevent identifier injection by allowing only known table names
+    _ALLOWED_TABLES = {
+        'users', 'listings', 'listing_images', 'reservations',
+        'password_reset_tokens', 'activity_logs', 'reports', 'payments'
+    }
+    if table_name not in _ALLOWED_TABLES:
+        raise ValueError(f"Invalid table name: {table_name}")
+
+    cursor.execute("PRAGMA table_info('%s')" % (table_name,))
     return any(row[1] == column_name for row in cursor.fetchall())
 
 # ---------- Initialization & Migrations ----------
@@ -70,7 +165,6 @@ def init_db():
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 email TEXT UNIQUE NOT NULL,
                 password TEXT NOT NULL,
-                original_pass TEXT,
                 role TEXT NOT NULL,
                 full_name TEXT,
                 is_verified INTEGER DEFAULT 0,
@@ -203,6 +297,112 @@ def init_db():
             );
         """)
 
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS user_addresses (
+                address_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                house_no TEXT,
+                street TEXT,
+                barangay TEXT,
+                city TEXT,
+                province TEXT,
+                postal_code TEXT,
+                is_primary INTEGER DEFAULT 1,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+            );
+        """)
+
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS saved_listings (
+                saved_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                listing_id INTEGER NOT NULL,
+                saved_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+                FOREIGN KEY(listing_id) REFERENCES listings(id) ON DELETE CASCADE,
+                UNIQUE(user_id, listing_id)
+            );
+        """)
+
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS notifications (
+                notification_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                notification_type TEXT,
+                category TEXT DEFAULT 'activity',
+                message TEXT NOT NULL,
+                is_read INTEGER DEFAULT 0,
+                reference_id INTEGER,
+                reference_type TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                read_at TEXT,
+                FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+            );
+        """)
+
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS user_settings (
+                setting_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL UNIQUE,
+                popup_notifications INTEGER DEFAULT 1,
+                chat_notifications INTEGER DEFAULT 1,
+                email_notifications INTEGER DEFAULT 1,
+                reservation_confirmation_notif INTEGER DEFAULT 1,
+                cancellation_notif INTEGER DEFAULT 1,
+                payment_update_notif INTEGER DEFAULT 1,
+                rent_reminders_notif INTEGER DEFAULT 1,
+                theme TEXT DEFAULT 'light',
+                language TEXT DEFAULT 'en',
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+            );
+        """)
+
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS payment_transactions (
+                transaction_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                reservation_id INTEGER,
+                user_id INTEGER,
+                amount REAL,
+                payment_method TEXT,
+                transaction_reference TEXT,
+                card_last_four TEXT,
+                status TEXT DEFAULT 'Pending',
+                payment_date TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(reservation_id) REFERENCES reservations(id) ON DELETE CASCADE,
+                FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+            );
+        """)
+
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS reviews (
+                review_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                listing_id INTEGER NOT NULL,
+                user_id INTEGER NOT NULL,
+                rating INTEGER,
+                comment TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(listing_id) REFERENCES listings(id) ON DELETE CASCADE,
+                FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+            );
+        """)
+
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS messages (
+                message_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                sender_id INTEGER NOT NULL,
+                receiver_id INTEGER,
+                content TEXT NOT NULL,
+                is_read INTEGER DEFAULT 0,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(sender_id) REFERENCES users(id) ON DELETE CASCADE
+            );
+        """)
+
         conn.commit()
         try:
             from storage import seed_data
@@ -286,18 +486,38 @@ def validate_user(email: str, password: Optional[str] = None) -> Optional[Dict[s
     cur = conn.cursor()
     try:
         if password is not None:
-            hashed = hash_password(password)
-            cur.execute(
-                "SELECT id, role, email, full_name FROM users WHERE email = ? AND password = ? AND is_active = 1;",
-                (email_clean, hashed)
-            )
+            # Fetch stored hash and verify using verify_password to support Argon2 + legacy SHA256
+            cur.execute("SELECT id, role, email, full_name, password FROM users WHERE email = ? AND is_active = 1;", (email_clean,))
+            row = cur.fetchone()
+            if not row:
+                return None
+            stored = row[4]
+            try:
+                ok = verify_password(stored, password)
+            except Exception:
+                ok = False
+
+            if not ok:
+                return None
+
+            # If verified and stored is legacy sha256, re-hash with Argon2 and update DB
+            if _PH is not None and stored and isinstance(stored, str) and not ('$argon2' in stored):
+                try:
+                    new_hash = hash_password(password)
+                    cur.execute("UPDATE users SET password = ? WHERE id = ?;", (new_hash, row[0]))
+                    conn.commit()
+                except Exception:
+                    conn.rollback()
+
+            # return user info from row
+            return {"id": row[0], "role": row[1], "email": row[2], "full_name": row[3]}
         else:
             cur.execute(
                 "SELECT id, role, email, full_name FROM users WHERE email = ? AND is_active = 1;",
                 (email_clean,)
             )
-        row = cur.fetchone()
-        return dict(row) if row else None
+            row = cur.fetchone()
+            return dict(row) if row else None
     except Exception as e:
         print(f"[validate_user] error for {email_clean}: {e}", file=sys.stderr)
         return None
@@ -313,6 +533,23 @@ def get_user_info(user_id: int) -> Optional[Dict[str, Any]]:
         return dict(row) if row else None
     finally:
         conn.close()
+
+
+def get_user_by_id(user_id: int) -> Optional[Dict[str, Any]]:
+    """Backward-compatible alias for `get_user_info`.
+
+    Some service layers expect `get_user_by_id` to exist; delegate to
+    the canonical `get_user_info` implementation.
+    """
+    return get_user_info(user_id)
+
+
+def update_user_profile(user_id: int, full_name: str) -> bool:
+    """Backward-compatible alias for updating a user's full name.
+
+    Delegates to `update_user_full_name` which performs validation and logging.
+    """
+    return update_user_full_name(user_id, full_name)
 
 def get_user_by_email(email: str) -> Optional[Dict[str, Any]]:
     conn = get_connection()
@@ -523,6 +760,35 @@ def deactivate_user(user_id: int) -> bool:
     finally:
         conn.close()
 
+
+def activate_user(user_id: int) -> bool:
+    """
+    Reactivate user by setting is_active=1.
+    """
+    if user_id <= 0:
+        print(f"[activate_user] Invalid user_id: {user_id}", file=sys.stderr)
+        return False
+
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT email, role FROM users WHERE id = ?;", (user_id,))
+        user = cur.fetchone()
+        if not user:
+            print(f"[activate_user] User not found: {user_id}", file=sys.stderr)
+            return False
+
+        cur.execute("UPDATE users SET is_active = 1 WHERE id = ?;", (user_id,))
+        conn.commit()
+        log_activity(user_id, "User Activated", f"Activated {user['role']} user: {user['email']}")
+        return True
+    except Exception as e:
+        conn.rollback()
+        print(f"[activate_user] error for user {user_id}: {e}", file=sys.stderr)
+        return False
+    finally:
+        conn.close()
+
 # ---------- Password Reset Tokens ----------
 def create_password_reset_token(user_id: int, token: str, expires_at: str) -> bool:
     """
@@ -541,6 +807,22 @@ def create_password_reset_token(user_id: int, token: str, expires_at: str) -> bo
         if not cur.fetchone():
             print(f"[create_password_reset_token] User not found: {user_id}", file=sys.stderr)
             return False
+
+        # Rate-limit password reset requests: disallow more than 1 request per 5 minutes
+        try:
+            cur.execute("SELECT created_at FROM password_reset_tokens WHERE user_id = ? ORDER BY created_at DESC LIMIT 1;", (user_id,))
+            last = cur.fetchone()
+            if last and last[0]:
+                try:
+                    last_dt = datetime.fromisoformat(last[0])
+                    if datetime.utcnow() - last_dt < timedelta(minutes=5):
+                        print(f"[create_password_reset_token] Rate limit: recent token created for user {user_id}", file=sys.stderr)
+                        return False
+                except Exception:
+                    # If parsing fails, continue and allow creation (safer than blocking legitimate users)
+                    pass
+        except Exception:
+            pass
 
         cur.execute("DELETE FROM password_reset_tokens WHERE user_id = ? AND used = 0;", (user_id,))
 
@@ -656,10 +938,11 @@ def create_listing(pm_id: int, address: str, price: float, description: str,
             return None
 
         now = _now_iso()
+        # New listings should start as pending and be approved by an admin
         cur.execute("""
             INSERT INTO listings (pm_id, address, price, description, lodging_details, created_at, updated_at, status)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?);
-        """, (pm_id, address.strip(), price, description.strip(), lodging_details or "", now, now, "Available"))
+        """, (pm_id, address.strip(), price, description.strip(), lodging_details or "", now, now, "pending"))
 
         listing_id = cur.lastrowid
 
@@ -1106,6 +1389,31 @@ def get_listing_availability(listing_id: int) -> List[sqlite3.Row]:
     finally:
         conn.close()
 
+def get_reservation(reservation_id: int) -> Optional[Dict[str, Any]]:
+    """
+    Return a single reservation by ID joined with basic listing info.
+    Returns a dict or None if not found.
+    """
+    if reservation_id <= 0:
+        return None
+
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT r.*, l.address AS listing_address, l.price AS listing_price
+            FROM reservations r
+            LEFT JOIN listings l ON r.listing_id = l.id
+            WHERE r.id = ?;
+        """, (reservation_id,))
+        row = cur.fetchone()
+        return dict(row) if row else None
+    except Exception as e:
+        print(f"[get_reservation] error for id {reservation_id}: {e}", file=sys.stderr)
+        return None
+    finally:
+        conn.close()
+
 # ---------- Activity logging ----------
 def log_activity(user_id: Optional[int], action: str, details: str = "") -> bool:
     conn = get_connection()
@@ -1327,4 +1635,323 @@ def get_property_by_id(property_id: int) -> Optional[Dict[str, Any]]:
     except Exception as e:
         print(f"[get_property_by_id] error: {e}", file=sys.stderr)
         return None
+
+
+# ---------- Extra helpers added from DatabaseManager class ----------
+def get_user_address(user_id: int) -> Optional[Dict[str, Any]]:
+    """Get the primary address for a user."""
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT * FROM user_addresses WHERE user_id = ? AND is_primary = 1;", (user_id,))
+        row = cur.fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def update_user_address(user_id: int, house_no: str, street: str, barangay: str, city: str, province: str = "Camarines Sur") -> bool:
+    """Update or create a user's primary address."""
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT address_id FROM user_addresses WHERE user_id = ? AND is_primary = 1;", (user_id,))
+        existing = cur.fetchone()
+        now = _now_iso()
+        if existing:
+            cur.execute(
+                """
+                UPDATE user_addresses SET house_no = ?, street = ?, barangay = ?, city = ?, province = ?, updated_at = ?
+                WHERE address_id = ?
+                """,
+                (house_no, street, barangay, city, province, now, existing[0])
+            )
+        else:
+            cur.execute(
+                """
+                INSERT INTO user_addresses (user_id, house_no, street, barangay, city, province, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (user_id, house_no, street, barangay, city, province, now, now)
+            )
+        conn.commit()
+        return True
+    except Exception as e:
+        conn.rollback()
+        print(f"[update_user_address] error for user {user_id}: {e}", file=sys.stderr)
+        return False
+    finally:
+        conn.close()
+
+
+def get_saved_listings(user_id: int) -> List[Dict[str, Any]]:
+    """Return saved listings for a user (joined with listings)."""
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """
+            SELECT l.*, s.saved_at
+            FROM listings l
+            INNER JOIN saved_listings s ON l.id = s.listing_id
+            WHERE s.user_id = ?
+            ORDER BY s.saved_at DESC;
+            """,
+            (user_id,)
+        )
+        rows = cur.fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def toggle_saved_listing(user_id: int, listing_id: int) -> bool:
+    """Toggle saved listing; returns True if added, False if removed."""
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT saved_id FROM saved_listings WHERE user_id = ? AND listing_id = ?;", (user_id, listing_id))
+        row = cur.fetchone()
+        if row:
+            cur.execute("DELETE FROM saved_listings WHERE saved_id = ?;", (row[0],))
+            conn.commit()
+            return False
+        else:
+            now = _now_iso()
+            cur.execute("INSERT INTO saved_listings (user_id, listing_id, saved_at) VALUES (?, ?, ?);", (user_id, listing_id, now))
+            conn.commit()
+            return True
+    except Exception as e:
+        conn.rollback()
+        print(f"[toggle_saved_listing] error: {e}", file=sys.stderr)
+        return False
+    finally:
+        conn.close()
+
+
+def get_user_notifications(user_id: int, limit: int = 50) -> List[Dict[str, Any]]:
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT ?;", (user_id, limit))
+        rows = cur.fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def get_unread_count(user_id: int) -> int:
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT COUNT(*) as c FROM notifications WHERE user_id = ? AND is_read = 0;", (user_id,))
+        row = cur.fetchone()
+        return int(row['c']) if row and 'c' in row.keys() else (row[0] if row else 0)
+    finally:
+        conn.close()
+
+
+def add_notification(user_id: int, notification_type: str, message: str, category: str = "activity", reference_id: Optional[int] = None, reference_type: Optional[str] = None) -> bool:
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        now = _now_iso()
+        cur.execute(
+            """
+            INSERT INTO notifications (user_id, notification_type, category, message, reference_id, reference_type, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?);
+            """,
+            (user_id, notification_type, category, message, reference_id, reference_type, now)
+        )
+        conn.commit()
+        return True
+    except Exception as e:
+        conn.rollback()
+        print(f"[add_notification] error: {e}", file=sys.stderr)
+        return False
+    finally:
+        conn.close()
+
+
+def mark_notification_read(notification_id: int) -> bool:
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        now = _now_iso()
+        cur.execute("UPDATE notifications SET is_read = 1, read_at = ? WHERE notification_id = ?;", (now, notification_id))
+        conn.commit()
+        return cur.rowcount > 0
+    except Exception as e:
+        conn.rollback()
+        print(f"[mark_notification_read] error: {e}", file=sys.stderr)
+        return False
+    finally:
+        conn.close()
+
+
+def mark_all_notifications_read(user_id: int) -> bool:
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        now = _now_iso()
+        cur.execute("UPDATE notifications SET is_read = 1, read_at = ? WHERE user_id = ? AND is_read = 0;", (now, user_id))
+        conn.commit()
+        return True
+    except Exception as e:
+        conn.rollback()
+        print(f"[mark_all_notifications_read] error: {e}", file=sys.stderr)
+        return False
+    finally:
+        conn.close()
+
+
+def get_user_settings(user_id: int) -> Optional[Dict[str, Any]]:
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT * FROM user_settings WHERE user_id = ?;", (user_id,))
+        row = cur.fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def update_user_settings(user_id: int, settings: Dict[str, Any]) -> bool:
+    """Update user settings. `settings` is a dict of allowed keys."""
+    valid_keys = [
+        "popup_notifications", "chat_notifications", "email_notifications",
+        "reservation_confirmation_notif", "cancellation_notif",
+        "payment_update_notif", "rent_reminders_notif", "theme", "language"
+    ]
+    updates = []
+    values = []
+    for k, v in settings.items():
+        if k in valid_keys:
+            updates.append(f"{k} = ?")
+            values.append(v)
+
+    if not updates:
+        return False
+
+    values.append(user_id)
+    sql = f"UPDATE user_settings SET {', '.join(updates)}, updated_at = ? WHERE user_id = ?"
+    # updated_at value
+    values.insert(-1, _now_iso())
+
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute(sql, tuple(values))
+        conn.commit()
+        return True
+    except Exception as e:
+        conn.rollback()
+        print(f"[update_user_settings] error: {e}", file=sys.stderr)
+        return False
+    finally:
+        conn.close()
+
+
+def create_payment_transaction(reservation_id: int, user_id: int, amount: float, payment_method: str, transaction_reference: Optional[str] = None, card_last_four: Optional[str] = None) -> Optional[int]:
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        now = _now_iso()
+        cur.execute(
+            """
+            INSERT INTO payment_transactions (reservation_id, user_id, amount, payment_method, transaction_reference, card_last_four, status, payment_date, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+            """,
+            (reservation_id, user_id, amount, payment_method, transaction_reference, card_last_four, 'Completed', now, now)
+        )
+        conn.commit()
+        return cur.lastrowid
+    except Exception as e:
+        conn.rollback()
+        print(f"[create_payment_transaction] error: {e}", file=sys.stderr)
+        return None
+    finally:
+        conn.close()
+
+
+def get_payment_transactions(user_id: int) -> List[Dict[str, Any]]:
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """
+            SELECT pt.*, r.id as reservation_id, l.address as listing_address
+            FROM payment_transactions pt
+            LEFT JOIN reservations r ON pt.reservation_id = r.id
+            LEFT JOIN listings l ON r.listing_id = l.id
+            WHERE pt.user_id = ?
+            ORDER BY pt.created_at DESC;
+            """,
+            (user_id,)
+        )
+        rows = cur.fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def add_review(listing_id: int, user_id: int, rating: int, comment: str) -> bool:
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        now = _now_iso()
+        cur.execute("INSERT INTO reviews (listing_id, user_id, rating, comment, created_at) VALUES (?, ?, ?, ?, ?);", (listing_id, user_id, rating, comment, now))
+        conn.commit()
+        return True
+    except Exception as e:
+        conn.rollback()
+        print(f"[add_review] error: {e}", file=sys.stderr)
+        return False
+    finally:
+        conn.close()
+
+
+def get_reviews_for_property(listing_id: int) -> List[Dict[str, Any]]:
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """
+            SELECT r.*, u.full_name, u.email
+            FROM reviews r
+            LEFT JOIN users u ON r.user_id = u.id
+            WHERE r.listing_id = ?
+            ORDER BY r.created_at DESC;
+            """,
+            (listing_id,)
+        )
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+def send_message(sender_id: int, content: str, receiver_id: int = 0) -> bool:
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        now = _now_iso()
+        cur.execute("INSERT INTO messages (sender_id, receiver_id, content, is_read, created_at) VALUES (?, ?, ?, 0, ?);", (sender_id, receiver_id, content, now))
+        conn.commit()
+        return True
+    except Exception as e:
+        conn.rollback()
+        print(f"[send_message] error: {e}", file=sys.stderr)
+        return False
+    finally:
+        conn.close()
+
+
+def get_chat_history(user_id: int) -> List[Dict[str, Any]]:
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT * FROM messages WHERE sender_id = ? OR receiver_id = ? ORDER BY created_at ASC;", (user_id, user_id))
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
 

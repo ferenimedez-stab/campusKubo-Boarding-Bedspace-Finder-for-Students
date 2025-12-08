@@ -4,6 +4,7 @@ Updated from main.py with complete form validation
 """
 import flet as ft
 from storage.db import create_user, validate_password, validate_email
+from utils.navigation import go_home
 
 
 class SignupView:
@@ -12,11 +13,6 @@ class SignupView:
     def __init__(self, page: ft.Page):
         self.page = page
         self.selected_role = ft.Text("Tenant", visible=False)
-
-    def build(self):
-        """Build signup view - matching model"""
-        self.page.title = "CampusKubo - Sign Up"
-
 
     def change_role(self, role):
         self.selected_role.value = role
@@ -41,6 +37,7 @@ class SignupView:
         self.pm_button = ft.ElevatedButton(
             "🏢 Property Manager",
             width=160,
+            bgcolor="#e4e4e4",
             color="black",
             on_click=lambda _: self.change_role("Property Manager")
         )
@@ -63,37 +60,36 @@ class SignupView:
 
         # Password requirements display
         req_length = ft.Row([
-            ft.Icon(ft.Icons.CIRCLE, size=12, color="#999"),
-            ft.Text("At least 8 characters", size=11, color="#666")
+            ft.Icon(ft.Icons.CIRCLE, size=12, color=ft.Colors.GREY),
+            ft.Text("At least 8 characters", size=11, color=ft.Colors.GREY)
         ], spacing=5)
 
         req_uppercase = ft.Row([
-            ft.Icon(ft.Icons.CIRCLE, size=12, color="#999"),
-            ft.Text("One uppercase letter", size=11, color="#666")
+            ft.Icon(ft.Icons.CIRCLE, size=12, color=ft.Colors.GREY),
+            ft.Text("One uppercase letter", size=11, color=ft.Colors.GREY)
         ], spacing=5)
 
         req_number = ft.Row([
-            ft.Icon(ft.Icons.CIRCLE, size=12, color="#999"),
-            ft.Text("One number", size=11, color="#666")
+            ft.Icon(ft.Icons.CIRCLE, size=12, color=ft.Colors.GREY),
+            ft.Text("One number", size=11, color=ft.Colors.GREY)
         ], spacing=5)
 
         req_special = ft.Row([
-            ft.Icon(ft.Icons.CIRCLE, size=12, color="#999"),
-            ft.Text("One special character (!@#$%^&*)", size=11, color="#666")
+            ft.Icon(ft.Icons.CIRCLE, size=12, color=ft.Colors.GREY),
+            ft.Text("One special character (!@#$%^&*)", size=11, color=ft.Colors.GREY)
         ], spacing=5)
 
         password_requirements = ft.Column(
             visible=False,
             spacing=5,
             controls=[
-                ft.Text("Password requirements:", size=12, color="#666", weight=ft.FontWeight.BOLD),
+                ft.Text("Password requirements:", size=12, color=ft.Colors.GREY, weight=ft.FontWeight.BOLD),
                 req_length,
                 req_uppercase,
                 req_number,
                 req_special,
             ]
         )
-
         def validate_password_live(e):
             """Real-time password validation with visual feedback"""
             pwd = password.value or ""
@@ -105,20 +101,20 @@ class SignupView:
             has_special = any(c in "!@#$%^&*()_+-=[]{}|;:,.<>?" for c in pwd)
 
             # Update length requirement
-            req_length.controls[0] = ft.Icon(ft.Icons.CHECK_CIRCLE if has_length else ft.Icons.CIRCLE, size=12, color="#4caf50" if has_length else "#999")
-            req_length.controls[1] = ft.Text("At least 8 characters", size=11, color="#4caf50" if has_length else "#666")
+            req_length.controls[0] = ft.Icon(ft.Icons.CHECK_CIRCLE if has_length else ft.Icons.CIRCLE, size=12, color="#4caf50" if has_length else ft.Colors.GREY)
+            req_length.controls[1] = ft.Text("At least 8 characters", size=11, color="#4caf50" if has_length else ft.Colors.GREY)
 
             # Update uppercase requirement
-            req_uppercase.controls[0] = ft.Icon(ft.Icons.CHECK_CIRCLE if has_uppercase else ft.Icons.CIRCLE, size=12, color="#4caf50" if has_uppercase else "#999")
-            req_uppercase.controls[1] = ft.Text("One uppercase letter", size=11, color="#4caf50" if has_uppercase else "#666")
+            req_uppercase.controls[0] = ft.Icon(ft.Icons.CHECK_CIRCLE if has_uppercase else ft.Icons.CIRCLE, size=12, color="#4caf50" if has_uppercase else ft.Colors.GREY)
+            req_uppercase.controls[1] = ft.Text("One uppercase letter", size=11, color="#4caf50" if has_uppercase else ft.Colors.GREY)
 
             # Update number requirement
-            req_number.controls[0] = ft.Icon(ft.Icons.CHECK_CIRCLE if has_number else ft.Icons.CIRCLE, size=12, color="#4caf50" if has_number else "#999")
-            req_number.controls[1] = ft.Text("One number", size=11, color="#4caf50" if has_number else "#666")
+            req_number.controls[0] = ft.Icon(ft.Icons.CHECK_CIRCLE if has_number else ft.Icons.CIRCLE, size=12, color="#4caf50" if has_number else ft.Colors.GREY)
+            req_number.controls[1] = ft.Text("One number", size=11, color="#4caf50" if has_number else ft.Colors.GREY)
 
             # Update special character requirement
-            req_special.controls[0] = ft.Icon(ft.Icons.CHECK_CIRCLE if has_special else ft.Icons.CIRCLE, size=12, color="#4caf50" if has_special else "#999")
-            req_special.controls[1] = ft.Text("One special character (!@#$%^&*)", size=11, color="#4caf50" if has_special else "#666")
+            req_special.controls[0] = ft.Icon(ft.Icons.CHECK_CIRCLE if has_special else ft.Icons.CIRCLE, size=12, color="#4caf50" if has_special else ft.Colors.GREY)
+            req_special.controls[1] = ft.Text("One special character (!@#$%^&*)", size=11, color="#4caf50" if has_special else ft.Colors.GREY)
 
             password_requirements.update()
 
@@ -145,7 +141,7 @@ class SignupView:
             size=12
         )
 
-        msg = ft.Text(" ", size=12)
+        msg = ft.Text(" ", size=12, text_align=ft.TextAlign.CENTER)
         loading = ft.ProgressRing(visible=False, width=20, height=20)
 
         def do_signup(e):
@@ -275,14 +271,14 @@ class SignupView:
                                                 ft.Text("Back to Home")
                                             ]
                                         ),
-                                        on_click=lambda _: self.page.go("/")
+                                        on_click=lambda _: go_home(self.page)
                                     ),
                                 ]
                             ),
 
                             # Header
                             ft.Text("Create Account", size=26, weight=ft.FontWeight.BOLD),
-                            ft.Text("Join CampusKubo today!", size=14, color="#666"),
+                            ft.Text("Join CampusKubo today!", size=14, weight=ft.FontWeight.BOLD),
 
                             ft.Container(height=5),
 

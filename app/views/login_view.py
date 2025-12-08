@@ -5,6 +5,7 @@ Updated from main.py with complete authentication logic
 """
 import flet as ft
 from storage.db import validate_user
+from utils.navigation import go_home
 
 
 class LoginView:
@@ -76,7 +77,7 @@ class LoginView:
                                                 ft.Text("Back to Home")
                                             ]
                                         ),
-                                        on_click=lambda _: self.page.go("/")
+                                            on_click=lambda _: go_home(self.page)
                                     ),
                                 ]
                             ),

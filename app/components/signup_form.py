@@ -167,7 +167,7 @@ class SignupForm:
                                 weight=ft.FontWeight.BOLD,
                                 color="#1A1A1A"
                             ),
-                            ft.Text("Join CampusKubo today", size=14, color="#666")
+                            ft.Text("Join CampusKubo today", size=14, color=ft.Colors.BLACK)
                         ]
                     )
                 ),

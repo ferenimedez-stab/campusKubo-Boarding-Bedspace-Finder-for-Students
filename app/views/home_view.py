@@ -236,7 +236,7 @@ class HomeView:
                         width=180,
                         height=120,
                         fit=ft.ImageFit.COVER,
-                    ) if image_url else ft.Icon(ft.Icons.HOME, size=60, color="#999"),
+                    ) if image_url else ft.Icon(ft.Icons.HOME, size=60, color=ft.Colors.BLACK),
                 ),
                 ft.Text(rating, size=14, weight=ft.FontWeight.BOLD),
                 ft.Text(name, weight=ft.FontWeight.BOLD, size=14),

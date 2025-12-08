@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [2.5.0] - 2025-12-08 (Enimedez)
+
+### Added
+- Bulk add of UI components and views for the user-facing app; see `app/components/` and `app/views/`.
+- Database improvements and seeding behavior: `app/storage/db.py` and `app/storage/seed_data.py` were extended to support additional features and richer demo data.
+
+### Changed
+- Updated README and documentation to reflect the new files and seeded demo data.
+
+
+---
+
 ## [1.5.0] - 2025-12-08 (Enimedez)
 
 ### Added
