@@ -268,4 +268,4 @@ For questions or issues:
 
 **Last Updated**: December 7, 2025
 
-**Version**: v0.4.0
+**Version**: v2.6.0

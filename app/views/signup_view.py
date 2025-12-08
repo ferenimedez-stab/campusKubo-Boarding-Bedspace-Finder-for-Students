@@ -1,9 +1,9 @@
 """
-Signup view
-Updated from main.py with complete form validation
+Signup view with earthy color palette
 """
 import flet as ft
 from storage.db import create_user, validate_password, validate_email
+from config.colors import COLORS
 
 
 class SignupView:
@@ -12,18 +12,14 @@ class SignupView:
     def __init__(self, page: ft.Page):
         self.page = page
         self.selected_role = ft.Text("Tenant", visible=False)
-
-    def build(self):
-        """Build signup view - matching model"""
-        self.page.title = "CampusKubo - Sign Up"
-
+        self.colors = COLORS
 
     def change_role(self, role):
         self.selected_role.value = role
-        self.tenant_button.bgcolor = "#0078ff" if role == "Tenant" else "#e4e4e4"
-        self.tenant_button.color = "white" if role == "Tenant" else "black"
-        self.pm_button.bgcolor = "#0078ff" if role == "Property Manager" else "#e4e4e4"
-        self.pm_button.color = "white" if role == "Property Manager" else "black"
+        self.tenant_button.bgcolor = self.colors["primary"] if role == "Tenant" else self.colors["background"]
+        self.tenant_button.color = self.colors["card_bg"] if role == "Tenant" else self.colors["text_dark"]
+        self.pm_button.bgcolor = self.colors["primary"] if role == "Property Manager" else self.colors["background"]
+        self.pm_button.color = self.colors["card_bg"] if role == "Property Manager" else self.colors["text_dark"]
         self.page.update()
 
     def build(self):
@@ -33,15 +29,16 @@ class SignupView:
         self.tenant_button = ft.ElevatedButton(
             "🏠 Tenant",
             width=150,
-            bgcolor="#0078ff",
-            color="white",
+            bgcolor=self.colors["primary"],
+            color=self.colors["card_bg"],
             on_click=lambda _: self.change_role("Tenant")
         )
 
         self.pm_button = ft.ElevatedButton(
             "🏢 Property Manager",
             width=160,
-            color="black",
+            bgcolor=self.colors["background"],
+            color=self.colors["text_dark"],
             on_click=lambda _: self.change_role("Property Manager")
         )
 
@@ -50,7 +47,11 @@ class SignupView:
             label="Full Name",
             width=330,
             hint_text="e.g., Juan Dela Cruz",
-            prefix_icon=ft.Icons.PERSON
+            prefix_icon=ft.Icons.PERSON,
+            bgcolor=self.colors["background"],
+            border_color=self.colors["border"],
+            focused_border_color=self.colors["primary"],
+            color=self.colors["text_dark"]
         )
 
         email = ft.TextField(
@@ -58,35 +59,39 @@ class SignupView:
             width=330,
             hint_text="e.g., juan@example.com",
             prefix_icon=ft.Icons.EMAIL,
-            keyboard_type=ft.KeyboardType.EMAIL
+            keyboard_type=ft.KeyboardType.EMAIL,
+            bgcolor=self.colors["background"],
+            border_color=self.colors["border"],
+            focused_border_color=self.colors["primary"],
+            color=self.colors["text_dark"]
         )
 
         # Password requirements display
         req_length = ft.Row([
-            ft.Icon(ft.Icons.CIRCLE, size=12, color="#999"),
-            ft.Text("At least 8 characters", size=11, color="#666")
+            ft.Icon(ft.Icons.CIRCLE, size=12, color=self.colors["border"]),
+            ft.Text("At least 8 characters", size=11, color=self.colors["text_light"])
         ], spacing=5)
 
         req_uppercase = ft.Row([
-            ft.Icon(ft.Icons.CIRCLE, size=12, color="#999"),
-            ft.Text("One uppercase letter", size=11, color="#666")
+            ft.Icon(ft.Icons.CIRCLE, size=12, color=self.colors["border"]),
+            ft.Text("One uppercase letter", size=11, color=self.colors["text_light"])
         ], spacing=5)
 
         req_number = ft.Row([
-            ft.Icon(ft.Icons.CIRCLE, size=12, color="#999"),
-            ft.Text("One number", size=11, color="#666")
+            ft.Icon(ft.Icons.CIRCLE, size=12, color=self.colors["border"]),
+            ft.Text("One number", size=11, color=self.colors["text_light"])
         ], spacing=5)
 
         req_special = ft.Row([
-            ft.Icon(ft.Icons.CIRCLE, size=12, color="#999"),
-            ft.Text("One special character (!@#$%^&*)", size=11, color="#666")
+            ft.Icon(ft.Icons.CIRCLE, size=12, color=self.colors["border"]),
+            ft.Text("One special character (!@#$%^&*)", size=11, color=self.colors["text_light"])
         ], spacing=5)
 
         password_requirements = ft.Column(
             visible=False,
             spacing=5,
             controls=[
-                ft.Text("Password requirements:", size=12, color="#666", weight=ft.FontWeight.BOLD),
+                ft.Text("Password requirements:", size=12, color=self.colors["text_dark"], weight=ft.FontWeight.BOLD),
                 req_length,
                 req_uppercase,
                 req_number,
@@ -105,20 +110,20 @@ class SignupView:
             has_special = any(c in "!@#$%^&*()_+-=[]{}|;:,.<>?" for c in pwd)
 
             # Update length requirement
-            req_length.controls[0] = ft.Icon(ft.Icons.CHECK_CIRCLE if has_length else ft.Icons.CIRCLE, size=12, color="#4caf50" if has_length else "#999")
-            req_length.controls[1] = ft.Text("At least 8 characters", size=11, color="#4caf50" if has_length else "#666")
+            req_length.controls[0] = ft.Icon(ft.Icons.CHECK_CIRCLE if has_length else ft.Icons.CIRCLE, size=12, color=self.colors["success"] if has_length else self.colors["border"])
+            req_length.controls[1] = ft.Text("At least 8 characters", size=11, color=self.colors["success"] if has_length else self.colors["text_light"])
 
             # Update uppercase requirement
-            req_uppercase.controls[0] = ft.Icon(ft.Icons.CHECK_CIRCLE if has_uppercase else ft.Icons.CIRCLE, size=12, color="#4caf50" if has_uppercase else "#999")
-            req_uppercase.controls[1] = ft.Text("One uppercase letter", size=11, color="#4caf50" if has_uppercase else "#666")
+            req_uppercase.controls[0] = ft.Icon(ft.Icons.CHECK_CIRCLE if has_uppercase else ft.Icons.CIRCLE, size=12, color=self.colors["success"] if has_uppercase else self.colors["border"])
+            req_uppercase.controls[1] = ft.Text("One uppercase letter", size=11, color=self.colors["success"] if has_uppercase else self.colors["text_light"])
 
             # Update number requirement
-            req_number.controls[0] = ft.Icon(ft.Icons.CHECK_CIRCLE if has_number else ft.Icons.CIRCLE, size=12, color="#4caf50" if has_number else "#999")
-            req_number.controls[1] = ft.Text("One number", size=11, color="#4caf50" if has_number else "#666")
+            req_number.controls[0] = ft.Icon(ft.Icons.CHECK_CIRCLE if has_number else ft.Icons.CIRCLE, size=12, color=self.colors["success"] if has_number else self.colors["border"])
+            req_number.controls[1] = ft.Text("One number", size=11, color=self.colors["success"] if has_number else self.colors["text_light"])
 
             # Update special character requirement
-            req_special.controls[0] = ft.Icon(ft.Icons.CHECK_CIRCLE if has_special else ft.Icons.CIRCLE, size=12, color="#4caf50" if has_special else "#999")
-            req_special.controls[1] = ft.Text("One special character (!@#$%^&*)", size=11, color="#4caf50" if has_special else "#666")
+            req_special.controls[0] = ft.Icon(ft.Icons.CHECK_CIRCLE if has_special else ft.Icons.CIRCLE, size=12, color=self.colors["success"] if has_special else self.colors["border"])
+            req_special.controls[1] = ft.Text("One special character (!@#$%^&*)", size=11, color=self.colors["success"] if has_special else self.colors["text_light"])
 
             password_requirements.update()
 
@@ -129,6 +134,10 @@ class SignupView:
             can_reveal_password=True,
             prefix_icon=ft.Icons.LOCK,
             on_change=validate_password_live,
+            bgcolor=self.colors["background"],
+            border_color=self.colors["border"],
+            focused_border_color=self.colors["primary"],
+            color=self.colors["text_dark"]
         )
 
         confirm_pw = ft.TextField(
@@ -136,22 +145,31 @@ class SignupView:
             width=330,
             password=True,
             can_reveal_password=True,
-            prefix_icon=ft.Icons.LOCK_OUTLINE
+            prefix_icon=ft.Icons.LOCK_OUTLINE,
+            bgcolor=self.colors["background"],
+            border_color=self.colors["border"],
+            focused_border_color=self.colors["primary"],
+            color=self.colors["text_dark"]
         )
 
-        agree = ft.Checkbox(value=False)
+        agree = ft.Checkbox(
+            value=False,
+            fill_color=self.colors["primary"],
+            check_color=self.colors["card_bg"]
+        )
         terms_text = ft.Text(
             "I agree to the Terms and Conditions and Privacy Policies",
-            size=12
+            size=12,
+            color=self.colors["text_dark"]
         )
 
-        msg = ft.Text(" ", size=12)
-        loading = ft.ProgressRing(visible=False, width=20, height=20)
+        msg = ft.Text(" ", size=12, text_align=ft.TextAlign.CENTER)
+        loading = ft.ProgressRing(visible=False, width=20, height=20, color=self.colors["primary"])
 
         def do_signup(e):
             # Clear previous messages
             msg.value = ""
-            msg.color = "red"
+            msg.color = self.colors["error"]
             loading.visible = True
             self.page.update()
 
@@ -221,7 +239,7 @@ class SignupView:
 
             if success:
                 msg.value = f"✅ {message}! A confirmation email has been sent to {email.value}. You may now log in."
-                msg.color = "green"
+                msg.color = self.colors["success"]
 
                 # Clear form after successful registration
                 full_name.value = ""
@@ -231,7 +249,7 @@ class SignupView:
                 agree.value = False
             else:
                 msg.value = f"❌ {message}"
-                msg.color = "red"
+                msg.color = self.colors["error"]
 
             msg.update()
             loading.update()
@@ -239,14 +257,15 @@ class SignupView:
         # Role selection info box
         role_info = ft.Container(
             padding=10,
-            bgcolor="#f0f7ff",
+            bgcolor=self.colors["background"],
             border_radius=6,
+            border=ft.border.all(1, self.colors["border"]),
             content=ft.Column(
                 spacing=5,
                 controls=[
-                    ft.Text("Choose your role:", size=12, weight=ft.FontWeight.BOLD),
-                    ft.Text("🏠 Tenant - Search and book accommodations", size=11),
-                    ft.Text("🏢 Property Manager - List and manage properties", size=11),
+                    ft.Text("Choose your role:", size=12, weight=ft.FontWeight.BOLD, color=self.colors["text_dark"]),
+                    ft.Text("🏠 Tenant - Search and book accommodations", size=11, color=self.colors["text_light"]),
+                    ft.Text("🏢 Property Manager - List and manage properties", size=11, color=self.colors["text_light"]),
                 ]
             )
         )
@@ -256,10 +275,19 @@ class SignupView:
             vertical_alignment=ft.MainAxisAlignment.CENTER,
             horizontal_alignment=ft.CrossAxisAlignment.CENTER,
             scroll=ft.ScrollMode.AUTO,
+            bgcolor=self.colors["background"],
             controls=[
                 ft.Container(
                     width=400,
                     padding=20,
+                    bgcolor=self.colors["card_bg"],
+                    border_radius=12,
+                    border=ft.border.all(1, self.colors["border"]),
+                    shadow=ft.BoxShadow(
+                        blur_radius=15,
+                        spread_radius=2,
+                        color=ft.Colors.with_opacity(0.1, self.colors["text_light"])
+                    ),
                     content=ft.Column(
                         alignment=ft.MainAxisAlignment.CENTER,
                         horizontal_alignment=ft.CrossAxisAlignment.CENTER,
@@ -271,8 +299,8 @@ class SignupView:
                                     ft.TextButton(
                                         content=ft.Row(
                                             controls=[
-                                                ft.Icon(ft.Icons.ARROW_BACK),
-                                                ft.Text("Back to Home")
+                                                ft.Icon(ft.Icons.ARROW_BACK, color=self.colors["primary"]),
+                                                ft.Text("Back to Home", color=self.colors["text_dark"])
                                             ]
                                         ),
                                         on_click=lambda _: self.page.go("/")
@@ -281,8 +309,8 @@ class SignupView:
                             ),
 
                             # Header
-                            ft.Text("Create Account", size=26, weight=ft.FontWeight.BOLD),
-                            ft.Text("Join CampusKubo today!", size=14, color="#666"),
+                            ft.Text("Create Account", size=26, weight=ft.FontWeight.BOLD, color=self.colors["text_dark"]),
+                            ft.Text("Join CampusKubo today!", size=14, weight=ft.FontWeight.BOLD, color=self.colors["text_light"]),
 
                             ft.Container(height=5),
 
@@ -320,17 +348,20 @@ class SignupView:
                                 "Create Account",
                                 width=330,
                                 height=45,
-                                on_click=do_signup
+                                on_click=do_signup,
+                                bgcolor=self.colors["primary"],
+                                color=self.colors["card_bg"]
                             ),
 
                             # Login link
                             ft.Row(
                                 alignment=ft.MainAxisAlignment.CENTER,
                                 controls=[
-                                    ft.Text("Already have an account?", size=13),
+                                    ft.Text("Already have an account?", size=13, color=self.colors["text_dark"]),
                                     ft.TextButton(
                                         "Login",
-                                        on_click=lambda _: self.page.go("/login")
+                                        on_click=lambda _: self.page.go("/login"),
+                                        style=ft.ButtonStyle(color=self.colors["primary"])
                                     ),
                                 ]
                             )
