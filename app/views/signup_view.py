@@ -4,6 +4,7 @@ Signup view
 import flet as ft
 from storage.db import create_user, validate_password, validate_email
 from config.colors import COLORS
+from utils.navigation import go_home
 
 
 class SignupView:
@@ -39,6 +40,8 @@ class SignupView:
             width=160,
             bgcolor=self.colors["background"],
             color=self.colors["text_dark"],
+            bgcolor="#e4e4e4",
+            color="black",
             on_click=lambda _: self.change_role("Property Manager")
         )
 
@@ -85,6 +88,8 @@ class SignupView:
         req_special = ft.Row([
             ft.Icon(ft.Icons.CIRCLE, size=12, color=self.colors["border"]),
             ft.Text("One special character (!@#$%^&*)", size=11, color=self.colors["text_light"])
+            ft.Icon(ft.Icons.CIRCLE, size=12, color=ft.Colors.GREY),
+            ft.Text("At least 8 characters", size=11, color=ft.Colors.GREY)
         ], spacing=5)
 
         password_requirements = ft.Column(
@@ -98,7 +103,6 @@ class SignupView:
                 req_special,
             ]
         )
-
         def validate_password_live(e):
             """Real-time password validation with visual feedback"""
             pwd = password.value or ""
@@ -303,7 +307,7 @@ class SignupView:
                                                 ft.Text("Back to Home", color=self.colors["text_dark"])
                                             ]
                                         ),
-                                        on_click=lambda _: self.page.go("/")
+                                        on_click=lambda _: go_home(self.page)
                                     ),
                                 ]
                             ),

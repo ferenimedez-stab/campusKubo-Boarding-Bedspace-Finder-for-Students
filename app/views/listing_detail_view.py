@@ -4,6 +4,7 @@ Listing detail view
 import flet as ft
 import os
 from typing import cast
+from utils.navigation import go_home
 from services.listing_service import ListingService
 from components.reservation_form import ReservationForm
 from services.reservation_service import ReservationService
@@ -69,10 +70,10 @@ class ListingDetailView:
                             horizontal_alignment=ft.CrossAxisAlignment.CENTER,
                             controls=[
                                 ft.Icon(ft.Icons.ERROR, size=64, color="#F44336"),
-                                ft.Text("Listing not found", size=24, color="#666"),
+                                ft.Text("Listing not found", size=24, color=ft.Colors.BLACK),
                                 ft.ElevatedButton(
                                     "Back to Home",
-                                    on_click=lambda _: self.page.go("/")
+                                    on_click=lambda _: go_home(self.page)
                                 )
                             ]
                         )
@@ -99,7 +100,7 @@ class ListingDetailView:
                         height=400,
                         fit=ft.ImageFit.COVER
                     ) if listing.images and os.path.exists(listing.images[0]) else ft.Container(
-                        content=ft.Icon(ft.Icons.HOME, size=100, color="#999"),
+                        content=ft.Icon(ft.Icons.HOME, size=100, color=ft.Colors.BLACK),
                         alignment=ft.alignment.center
                     )
                 )
@@ -188,7 +189,7 @@ class ListingDetailView:
                                 color="#0078FF",
                                 weight=ft.FontWeight.BOLD
                             ),
-                            ft.Text("/month", size=18, color="#666")
+                            ft.Text("/month", size=18, color=ft.Colors.BLACK)
                         ],
                         spacing=5
                     ),
@@ -197,7 +198,7 @@ class ListingDetailView:
                         spacing=10,
                         controls=[
                             ft.Text("Description", size=20, weight=ft.FontWeight.BOLD),
-                            ft.Text(listing.description, size=14, color="#666")
+                            ft.Text(listing.description, size=14, color=ft.Colors.BLACK)
                         ]
                     ),
                     ft.Divider(),
@@ -208,7 +209,7 @@ class ListingDetailView:
                             ft.Text(
                                 listing.lodging_details or "No additional details provided",
                                 size=14,
-                                color="#666"
+                                color=ft.Colors.BLACK
                             )
                         ]
                     )
@@ -246,7 +247,7 @@ class ListingDetailView:
                         ft.Text(
                             "Please login to make a reservation",
                             size=14,
-                            color="#666"
+                            color=ft.Colors.BLACK
                         ),
                         ft.ElevatedButton(
                             "Login",
@@ -280,7 +281,7 @@ class ListingDetailView:
                         controls=[
                             ft.IconButton(
                                 icon=ft.Icons.ARROW_BACK,
-                                icon_color="#666",
+                                icon_color=ft.Colors.BLACK,
                                 tooltip="Back",
                                 on_click=lambda _: self.page.go("/")
                             ),

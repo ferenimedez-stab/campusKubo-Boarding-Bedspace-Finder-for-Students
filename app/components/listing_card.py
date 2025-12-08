@@ -112,7 +112,7 @@ class ListingCard:
                 controls=[
                     ft.Icon(ft.Icons.STAR, size=16, color="#FFB800"),
                     ft.Text("4.8", size=13, weight=ft.FontWeight.BOLD, color="#333"),
-                    ft.Text("(24 reviews)", size=11, color="#666"),
+                    ft.Text("(24 reviews)", size=11, color=ft.Colors.BLACK),
                 ],
                 spacing=4,
             ),
@@ -130,7 +130,7 @@ class ListingCard:
                         size=18,
                         weight=ft.FontWeight.BOLD,
                     ),
-                    ft.Text("/mo", color="#666", size=12),
+                    ft.Text("/mo", color=ft.Colors.BLACK, size=12),
                 ],
                 spacing=2,
             ),
@@ -288,7 +288,7 @@ class ListingCard:
                 content=ft.Text(
                     description[:120] + "..." if len(description) > 120 else description,
                     size=13,
-                    color="#666",
+                    color=ft.Colors.BLACK,
                 ),
                 height=40,
             ),

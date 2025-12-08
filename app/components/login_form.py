@@ -61,7 +61,7 @@ class LoginForm:
                             ft.Text(
                                 "Sign in to your account",
                                 size=14,
-                                color="#666"
+                                color=ft.Colors.BLACK
                             )
                         ]
                     )

@@ -5,6 +5,8 @@ Login view
 import flet as ft
 from storage.db import validate_user
 from config.colors import COLORS
+from utils.navigation import go_home
+
 
 class LoginView:
     """Login page view"""
@@ -179,7 +181,7 @@ class LoginView:
                                                 ft.Text("Back to Home", color=self.colors["text_dark"])
                                             ]
                                         ),
-                                        on_click=lambda _: self.page.go("/")
+                                            on_click=lambda _: go_home(self.page)
                                     ),
                                 ]
                             ),

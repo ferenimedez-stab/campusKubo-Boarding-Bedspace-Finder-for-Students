@@ -81,7 +81,7 @@ class DashboardNavBar:
                                 spacing=0,
                                 controls=[
                                     ft.Text("CampusKubo", size=22, weight=ft.FontWeight.BOLD),
-                                    ft.Text(self.user_email, size=13, color="#666")
+                                    ft.Text(self.user_email, size=13, color=ft.Colors.BLACK)
                                 ]
                             )
                         ]
