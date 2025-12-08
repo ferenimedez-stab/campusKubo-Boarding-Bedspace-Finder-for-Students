@@ -22,6 +22,7 @@ from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Any
 
 import sqlite3
+import json
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -1553,88 +1554,551 @@ def validate_email(email: str) -> tuple[bool, str]:
 
     return True, "Email is valid"
 
+
 def property_data():
     """
-    Seed initial property data if database is empty.
-    Maintains compatibility with model's property_data() call.
+    Seed 15 beautiful, real-looking properties with working images.
+    Runs only if we don't have 15+ proper listings yet.
     """
     conn = get_connection()
     cur = conn.cursor()
     try:
-        cur.execute("SELECT COUNT(*) as count FROM listings;")
-        row = cur.fetchone()
-        count = row['count'] if row else 0
+        # Add missing columns safely
+        columns_to_add = [
+            ("name", "TEXT"),
+            ("location", "TEXT"),
+            ("room_type", "TEXT"),
+            ("total_rooms", "INTEGER DEFAULT 0"),
+            ("available_rooms", "INTEGER DEFAULT 0"),
+            ("available_room_types", "TEXT"),
+            ("amenities", "TEXT"),
+            ("availability_status", "TEXT DEFAULT 'Available'"),
+            ("image_url", "TEXT"),
+            ("image_url_2", "TEXT"),
+            ("image_url_3", "TEXT"),
+            ("image_url_4", "TEXT"),
+        ]
+        for col_name, col_def in columns_to_add:
+            if not column_exists(cur, "listings", col_name):
+                try:
+                    cur.execute(f"ALTER TABLE listings ADD COLUMN {col_name} {col_def};")
+                    print(f"[property_data] Added column: {col_name}")
+                except:
+                    pass
+        conn.commit()
 
-        if count == 0:
-            sample_listings = [
-                {
-                    "pm_id": 1,
-                    "address": "123 Sample St, Quezon City",
-                    "price": 3500,
-                    "description": "Comfortable boarding house near campus",
-                    "room_type": "Double",
-                    "total_rooms": 5,
-                    "available_rooms": 2,
-                    "amenities": "WiFi, Kitchen, Laundry",
-                    "status": "approved"
-                },
-                {
-                    "pm_id": 1,
-                    "address": "456 Main Ave, Makati",
-                    "price": 4500,
-                    "description": "Modern condo with premium amenities",
-                    "room_type": "Single",
-                    "total_rooms": 8,
-                    "available_rooms": 3,
-                    "amenities": "WiFi, Air Conditioning, Parking",
-                    "status": "approved"
-                }
-            ]
+        pm_emails = [
+            "pm.1",
+            "pm.2",
+            "pm.3",
+            "pm.4",
+            "pm.5",
+            "pm.6",
+        ]
+
+        for email in pm_emails:
+            cur.execute("SELECT id FROM users WHERE email = ?", (email,))
+            if not cur.fetchone():
+                hashed = hash_password("PmPassword123!")  
+                cur.execute("""
+                    INSERT INTO users (email, password, role, full_name, created_at)
+                    VALUES (?, ?, ?, ?, ?)
+                """, (email, hashed, "pm", email.split("@")[0].replace(".", " ").title(), _now_iso()))
+                print(f"[property_data] Created PM: {email}")
+
+        conn.commit()
+
+        cur.execute("SELECT id, email FROM users WHERE role = 'pm' ORDER BY id")
+        pm_rows = cur.fetchall()
+        if len(pm_rows) < 6:
+            print("[property_data] Not enough PMs created!")
+            return
+
+        pm_map = {row["email"]: row["id"] for row in pm_rows}
+
+        cur.execute("SELECT COUNT(*) as c FROM listings WHERE name IS NOT NULL AND name != '' AND name NOT LIKE 'Demo Listing%'")
+        real_count = cur.fetchone()['c']
+
+        if real_count >= 15:
+            print(f"[property_data] Already have {real_count} real listings – skipping")
+            return
+
+        print(f"[property_data] Seeding 15 beautiful listings with real photos...")
+
+        sample_listings = [
+            {
+            "pm_id": pm_map["pm.1"],
+            "name": "Cozy Campus Boardinghouse",
+            "address": "123 Aurora Blvd, Quezon City",
+            "location": "Near UP Diliman",
+            "price": 3500.0,
+            "description": "Super cozy boarding house just 5 mins walk from UP Diliman gate. Clean rooms, fast WiFi, shared kitchen & laundry. Perfect for students!",
+            "room_type": "Double",
+            "total_rooms": 10,
+            "available_rooms": 4,
+            "available_room_types": json.dumps(["Single", "Double"]),
+            "amenities": json.dumps(["WiFi", "Kitchen", "Laundry", "24/7 Security", "Study Area", "Water Included"]),
+            "availability_status": "Available",
+            "lodging_details": "Double room with bunk beds",
+            "image_url": "https://images.unsplash.com/photo-1522708323590-d24dbb6b0267",
+            "image_url_2": "https://images.unsplash.com/photo-1502672260066-6bc2c0923089",
+            "image_url_3": "https://images.unsplash.com/photo-1484154218962-a197022b5858",
+            "image_url_4": "https://images.unsplash.com/photo-1493809842364-78817add7ffb",
+            "status": "approved"
+            },
+            {
+            "pm_id": pm_map["pm.1"],
+            "name": "Modern Studio near Ateneo",
+            "address": "Katipunan Ave, Loyola Heights",
+            "location": "Near Ateneo & Miriam",
+            "price": 5800.0,
+            "description": "Brand new minimalist studio with high-speed fiber internet, study desk, kitchenette, and private bathroom. Walking distance to campus.",
+            "room_type": "Studio",
+            "total_rooms": 8,
+            "available_rooms": 3,
+            "available_room_types": json.dumps(["Studio"]),
+            "amenities": json.dumps(["WiFi", "AC", "Kitchenette", "Private CR", "Study Desk", "Laundry Service"]),
+            "availability_status": "Available",
+            "lodging_details": "Fully furnished studio unit",
+            "image_url": "https://images.unsplash.com/photo-1560448204-e02f11c3d0e2",
+            "image_url_2": "https://images.unsplash.com/photo-1556020685-ae41abfc9365",
+            "image_url_3": "https://images.unsplash.com/photo-1522771739844-6a9f6d5f14af",
+            "image_url_4": "https://images.unsplash.com/photo-1600585154340-be6161a56a0c",
+            "status": "approved"
+            },
+            {
+            "pm_id": pm_map["pm.1"],
+            "name": "Budget Dorm Espana",
+            "address": "567 España Blvd, Sampaloc",
+            "location": "Near UST",
+            "price": 2500.0,
+            "description": "Affordable bedspace for budget-conscious students. Includes locker, study area, and free WiFi. 3 mins from UST gate.",
+            "room_type": "Bed Space",
+            "total_rooms": 20,
+            "available_rooms": 7,
+            "available_room_types": json.dumps(["Bed Space"]),
+            "amenities": json.dumps(["WiFi", "Locker", "Study Area", "CCTV", "Common CR"]),
+            "availability_status": "Available",
+            "lodging_details": "Clean bed space with personal cabinet",
+            "image_url": "https://images.unsplash.com/photo-1555854877-bab0e564b8d5",
+            "image_url_2": "https://images.unsplash.com/photo-1540518614846-7eded433c457",
+            "image_url_3": "https://images.unsplash.com/photo-1562438668-bcf0ca6578f0",
+            "image_url_4": "https://images.unsplash.com/photo-1505693416388-ac5ce068fe85",
+            "status": "approved"
+            },
+            {
+            "pm_id": pm_map["pm.2"],
+            "name": "Female-Only Dorm Taft",
+            "address": "234 Taft Avenue, Malate",
+            "location": "Near DLSU & St. Scholastica",
+            "price": 3200.0,
+            "description": "Exclusive female dormitory with 24/7 female guard, curfew, study lounge, and sisterhood community. Safe and supportive environment.",
+            "room_type": "Double",
+            "total_rooms": 12,
+            "available_rooms": 5,
+            "available_room_types": json.dumps(["Double", "Quad Share"]),
+            "amenities": json.dumps(["WiFi", "Study Lounge", "Female Guard 24/7", "CCTV", "Laundry", "Prayer Room"]),
+            "availability_status": "Available",
+            "lodging_details": "Safe female-only boarding house",
+            "image_url": "https://images.unsplash.com/photo-1582719478250-c89cae4dc85b",
+            "image_url_2": "https://images.unsplash.com/photo-1513694203232-719a280e022f",
+            "image_url_3": "https://images.unsplash.com/photo-1602940659805-70b109a9d8a2",
+            "image_url_4": "https://images.unsplash.com/photo-1600585154340-be6161a56a0c",
+            "status": "approved"
+            },
+            {
+            "pm_id": pm_map["pm.2"],
+            "name": "Luxury Condo BGC",
+            "address": "Serendra, Bonifacio Global City",
+            "location": "BGC, Taguig",
+            "price": 8500.0,
+            "description": "High-end condo unit with hotel-like amenities: infinity pool, gym, concierge. Perfect for UP-PGH, St. Luke's, or BGC workers.",
+            "room_type": "Single",
+            "total_rooms": 6,
+            "available_rooms": 2,
+            "available_room_types": json.dumps(["Single", "Studio"]),
+            "amenities": json.dumps(["WiFi", "AC", "Gym", "Pool", "Concierge", "Parking"]),
+            "availability_status": "Limited",
+            "lodging_details": "Premium single room with city view",
+            "image_url": "https://images.unsplash.com/photo-1564078516393-cf04bd966897",
+            "image_url_2": "https://images.unsplash.com/photo-1567767292722-443c687c3e73",
+            "image_url_3": "https://images.unsplash.com/photo-1512917774080-9991f1c4c750",
+            "image_url_4": "https://images.unsplash.com/photo-1600566753376-2da6f6a55fd9",
+            "status": "approved"
+            },
+            {
+            "pm_id": pm_map["pm.3"],
+            "name": "Smart Tech Dorm QC",
+            "address": "999 Innovation Ave, Diliman",
+            "location": "Near UP & Ateneo",
+            "price": 3800.0,
+            "description": "State-of-the-art smart dorm: biometric entry, app-controlled lights/AC, gaming room, study pods.",
+            "room_type": "Single",
+            "total_rooms": 20,
+            "available_rooms": 9,
+            "available_room_types": json.dumps(["Single", "Twin Share"]),
+            "amenities": json.dumps(["Fiber Internet", "Smart Lock", "Gaming Room", "Study Pods", "Rooftop"]),
+            "availability_status": "Available",
+            "lodging_details": "Tech-savvy dormitory",
+            "image_url": "https://images.unsplash.com/photo-1600566753190-17f0baa2a6c3",
+            "image_url_2": "https://images.unsplash.com/photo-1602940659805-70b109a9d8a2",
+            "image_url_3": "https://images.unsplash.com/photo-1600585154340-be6161a56a0c",
+            "image_url_4": "https://images.unsplash.com/photo-1560185127-6ed189bf02f4",
+            "status": "approved"
+            },
+            {
+            "pm_id": pm_map["pm.3"],
+            "name": "Garden View Apartment",
+            "address": "88 Pioneer St, Mandaluyong",
+            "location": "Near Shaw Blvd",
+            "price": 4800.0,
+            "description": "Peaceful apartment with balcony and garden view. Great natural light, quiet street, near malls and MRT.",
+            "room_type": "Single",
+            "total_rooms": 8,
+            "available_rooms": 3,
+            "available_room_types": json.dumps(["Single", "Double"]),
+            "amenities": json.dumps(["WiFi", "Balcony", "Parking", "Garden", "CCTV"]),
+            "availability_status": "Available",
+            "lodging_details": "Apartment with garden access",
+            "image_url": "https://images.unsplash.com/photo-1536376072261-38c75010e6c9",
+            "image_url_2": "https://images.unsplash.com/photo-1522708323590-d24dbb6b0267",
+            "image_url_3": "https://images.unsplash.com/photo-1502672260066-6bc2c0923089",
+            "image_url_4": "https://images.unsplash.com/photo-1484154218962-a197022b5858",
+            "status": "approved"
+            },
+            {
+            "pm_id": pm_map["pm.4"],
+            "name": "Executive Townhouse Alabang",
+            "address": "Palm Drive, Alabang",
+            "location": "Alabang, Muntinlupa",
+            "price": 9500.0,
+            "description": "Spacious 2-storey townhouse perfect for med students or small groups. Private garage, clubhouse access.",
+            "room_type": "Whole Unit",
+            "total_rooms": 3,
+            "available_rooms": 1,
+            "available_room_types": json.dumps(["Whole Unit"]),
+            "amenities": json.dumps(["WiFi", "Parking", "Clubhouse", "Pool", "Swimming Pool", "Security"]),
+            "availability_status": "Limited",
+            "lodging_details": "Full townhouse rental",
+            "image_url": "https://images.unsplash.com/photo-1512917774080-9991f1c4c750",
+            "image_url_2": "https://images.unsplash.com/photo-1600585154340-be6161a56a0c",
+            "image_url_3": "https://images.unsplash.com/photo-1600566753190-17f0baa2a6c3",
+            "image_url_4": "https://images.unsplash.com/photo-1560448204-e02f11c3d0e2",
+            "status": "approved"
+            },
+            {
+            "pm_id": pm_map["pm.4"],
+            "name": "Beachside Condo Pasay",
+            "address": "777 Roxas Blvd",
+            "location": "Near Mall of Asia",
+            "price": 7200.0,
+            "description": "Stunning bay view condo. Wake up to the sea breeze. Infinity pool, gym, mall access.",
+            "room_type": "Studio",
+            "total_rooms": 5,
+            "available_rooms": 2,
+            "available_room_types": json.dumps(["Studio", "One Bedroom"]),
+            "amenities": json.dumps(["WiFi", "Pool", "Gym", "Mall Access", "Bay View"]),
+            "availability_status": "Available",
+            "lodging_details": "Condo with sea view",
+            "image_url": "https://images.unsplash.com/photo-1502672023488-70e25813eb80",
+            "image_url_2": "https://images.unsplash.com/photo-1560185127-6ed189bf02f4",
+            "image_url_3": "https://images.unsplash.com/photo-1522771739844-6a9f6d5f14af",
+            "image_url_4": "https://images.unsplash.com/photo-1502672260066-6bc2c0923089",
+            "status": "approved"
+            },
+            {
+            "pm_id": pm_map["pm.5"],
+            "name": "Green Living Marikina",
+            "address": "555 Eco Street, Marikina Heights",
+            "location": "Marikina City",
+            "price": 4200.0,
+            "description": "Eco-friendly apartment with solar panels, rainwater system, and organic garden. Pet-friendly!",
+            "room_type": "Single",
+            "total_rooms": 10,
+            "available_rooms": 6,
+            "available_room_types": json.dumps(["Single", "Double"]),
+            "amenities": json.dumps(["WiFi", "Solar Power", "Garden", "Pet-Friendly", "Bike Rack"]),
+            "availability_status": "Available",
+            "lodging_details": "Sustainable living apartment",
+            "image_url": "https://images.unsplash.com/photo-1536376072261-38c75010e6c9",
+            "image_url_2": "https://images.unsplash.com/photo-1484154218962-a197022b5858",
+            "image_url_3": "https://images.unsplash.com/photo-1493809842364-78817add7ffb",
+            "image_url_4": "https://images.unsplash.com/photo-1502672260066-6bc2c0923089",
+            "status": "approved"
+            },
+            {
+            "pm_id": pm_map["pm.5"],
+            "name": "Co-Living Poblacion",
+            "address": "888 Jupiter St, Makati",
+            "location": "Poblacion, Makati",
+            "price": 6500.0,
+            "description": "Modern co-living space with co-working area, rooftop bar, gym, and events. Best for social students!",
+            "room_type": "Single",
+            "total_rooms": 15,
+            "available_rooms": 5,
+            "available_room_types": json.dumps(["Single", "Shared Studio"]),
+            "amenities": json.dumps(["WiFi", "Co-working", "Gym", "Rooftop Bar", "Events"]),
+            "availability_status": "Available",
+            "lodging_details": "Vibrant co-living community",
+            "image_url": "https://images.unsplash.com/photo-1512917774080-9991f1c4c750",
+            "image_url_2": "https://images.unsplash.com/photo-1600585154340-be6161a56a0c",
+            "image_url_3": "https://images.unsplash.com/photo-1560448204-e02f11c3d0e2",
+            "image_url_4": "https://images.unsplash.com/photo-1556020685-ae41abfc9365",
+            "status": "approved"
+            },
+            {
+            "pm_id": pm_map["pm.5"],
+            "name": "Traditional Home Sampaloc",
+            "address": "432 P. Noval St",
+            "location": "Near FEU & UE",
+            "price": 2900.0,
+            "description": "Classic Filipino boarding house with home-cooked meals available. Warm landlady, family vibe.",
+            "room_type": "Double",
+            "total_rooms": 8,
+            "available_rooms": 4,
+            "available_room_types": json.dumps(["Single", "Double"]),
+            "amenities": json.dumps(["WiFi", "Home-cooked Meals", "Laundry", "Study Area"]),
+            "availability_status": "Available",
+            "lodging_details": "Home away from home",
+            "image_url": "https://images.unsplash.com/photo-1522708323590-d24dbb6b0267",
+            "image_url_2": "https://images.unsplash.com/photo-1493809842364-78817add7ffb",
+            "image_url_3": "https://images.unsplash.com/photo-1484154218962-a197022b5858",
+            "image_url_4": "https://images.unsplash.com/photo-1540518614846-7eded433c457",
+            "status": "approved"
+            },
+            {
+            "pm_id": pm_map["pm.6"],
+            "name": "Premium Loft McKinley",
+            "address": "McKinley Hill, Taguig",
+            "location": "Venice Grand Canal Mall",
+            "price": 11000.0,
+            "description": "Ultra-luxury loft with panoramic views, smart home system, private terrace. For students who want the best.",
+            "room_type": "Penthouse",
+            "total_rooms": 1,
+            "available_rooms": 1,
+            "available_room_types": json.dumps(["Penthouse"]),
+            "amenities": json.dumps(["WiFi", "Smart Home", "Terrace", "Gym", "Pool", "Concierge"]),
+            "availability_status": "Available",
+            "lodging_details": "Exclusive penthouse unit",
+            "image_url": "https://images.unsplash.com/photo-1600566753190-17f0baa2a6c3",
+            "image_url_2": "https://images.unsplash.com/photo-1564078516393-cf04bd966897",
+            "image_url_3": "https://images.unsplash.com/photo-1512917774080-9991f1c4c750",
+            "image_url_4": "https://images.unsplash.com/photo-1600585154340-be6161a56a0c",
+            "status": "approved"
+            },
+            {
+            "pm_id": pm_map["pm.6"],
+            "name": "Sunshine Apartment Pasig",
+            "address": "Ortigas Extension, Pasig",
+            "location": "Near Tiendesitas",
+            "price": 4300.0,
+            "description": "Bright and sunny apartment with big windows. Near Eastwood, Ortigas CBD. Great for working students.",
+            "room_type": "Single",
+            "total_rooms": 10,
+            "available_rooms": 5,
+            "available_room_types": json.dumps(["Single"]),
+            "amenities": json.dumps(["WiFi", "AC", "Parking", "Security", "Rooftop"]),
+            "availability_status": "Available",
+            "lodging_details": "Sunny single room",
+            "image_url": "https://images.unsplash.com/photo-1502672260066-6bc2c0923089",
+            "image_url_2": "https://images.unsplash.com/photo-1484154218962-a197022b5858",
+            "image_url_3": "https://images.unsplash.com/photo-1522708323590-d24dbb6b0267",
+            "image_url_4": "https://images.unsplash.com/photo-1493809842364-78817add7ffb",
+            "status": "approved"
+            },
+            {
+            "pm_id": pm_map["pm.6"],
+            "name": "Riverside Bedspace",
+            "address": "Marikina Riverbanks",
+            "location": "Marikina City",
+            "price": 2400.0,
+            "description": "Most affordable option near Marikina schools. Clean, simple, safe. Free breakfast on weekends!",
+            "room_type": "Bed Space",
+            "total_rooms": 25,
+            "available_rooms": 10,
+            "available_room_types": json.dumps(["Bed Space"]),
+            "amenities": json.dumps(["WiFi", "Breakfast", "Locker", "CCTV"]),
+            "availability_status": "Available",
+            "lodging_details": "Budget bedspace with meals",
+            "image_url": "https://images.unsplash.com/photo-1505693416388-ac5ce068fe85",
+            "image_url_2": "https://images.unsplash.com/photo-1555854877-bab0e564b8d5",
+            "image_url_3": "https://images.unsplash.com/photo-1540518614846-7eded433c457",
+            "image_url_4": "https://images.unsplash.com/photo-1562438668-bcf0ca6578f0",
+            "status": "approved"
+            }
+        ]
+
+        now = _now_iso()
+        for listing in sample_listings:
+            cur.execute("""
+                INSERT INTO listings (
+                    pm_id, name, address, location, price, description, lodging_details,
+                    room_type, total_rooms, available_rooms, available_room_types,
+                    amenities, availability_status, image_url, image_url_2,
+                    image_url_3, image_url_4, status, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                listing["pm_id"], listing["name"], listing["address"], listing["location"],
+                listing["price"], listing["description"], listing["lodging_details"],
+                listing["room_type"], listing["total_rooms"], listing["available_rooms"],
+                listing["available_room_types"], listing["amenities"], listing["availability_status"],
+                listing["image_url"], listing["image_url_2"], listing["image_url_3"],
+                listing["image_url_4"], listing["status"], now, now
+            ))
+
+        conn.commit()
+        print("[property_data] SUCCESS! 15 beautiful listings with real photos seeded!")
+
     except Exception as e:
-        print(f"[property_data] error: {e}", file=sys.stderr)
+        print(f"[property_data] ERROR: {e}", file=sys.stderr)
+        import traceback
+        traceback.print_exc()
+        conn.rollback()
     finally:
         conn.close()
 
-def get_properties(search_query: str = "", filters: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
-    """
-    Get properties matching search query and filters.
-    Model-compatible adapter function.
-    Returns list of property dicts.
-    """
-    if filters is None:
-        filters = {}
 
+def get_properties(search_query: str = "", filters: dict = None) -> List[Dict]:
+    conn = get_connection()
+    cur = conn.cursor()
+    
     try:
-        results = search_listings_advanced(search_query=search_query, filters=filters)
-        return [dict(row) for row in results] if results else []
+        query = """
+            SELECT id, pm_id, name, address, location, price, description,
+                   room_type, total_rooms, available_rooms, available_room_types,
+                   amenities, availability_status, image_url, image_url_2,
+                   image_url_3, image_url_4, status, created_at
+            FROM listings 
+            WHERE status = 'approved'
+        """
+        params = []
+        filters = filters or {}
+
+        # ── Search keyword ───────────────────────────
+        if search_query := (search_query or "").strip():
+            pattern = f"%{search_query}%"
+            query += " AND (name LIKE ? OR location LIKE ? OR address LIKE ? OR description LIKE ?)"
+            params.extend([pattern] * 4)
+
+        # ── Price ────────────────────────────
+        if filters.get("price_min") is not None:
+            query += " AND price >= ?"
+            params.append(filters["price_min"])
+        if price_max := filters.get("price_max"):
+            query += " AND price <= ?"
+            params.append(price_max)
+
+        # ── Room Type (Single, Double, etc.) ───
+        if room_types := filters.get("room_type"):
+            if isinstance(room_types, str):
+                room_types = [room_types]
+            placeholders = ",".join(["?"] * len(room_types))
+            query += f" AND (room_type IN ({placeholders})"
+            params.extend(room_types)
+            for rt in room_types:
+                query += " OR available_room_types LIKE ?"
+                params.append(f'%"{rt}"%')
+            query += ")"
+
+        # ── Amenities (WiFi, Air Conditioning, etc.) 
+        if amenities := filters.get("amenities"):
+            if isinstance(amenities, str):
+                amenities = [amenities]
+            for amenity in amenities:
+                query += " AND amenities LIKE ?"
+                params.append(f'%"{amenity}"%')   
+
+        # ── Availability status ─────────────────────
+        if availability := filters.get("availability"):
+            query += " AND availability_status = ?"
+            params.append(availability)
+
+        # ── Location ─────────────────────────
+        if location := filters.get("location"):
+            pattern = f"%{location.strip()}%"
+            query += " AND (location LIKE ? OR address LIKE ?)"
+            params.extend([pattern, pattern])
+
+        query += " ORDER BY created_at DESC"
+
+
+        cur.execute(query, params)
+        rows = cur.fetchall()
+        columns = [desc[0] for desc in cur.description]
+        result = [dict(zip(columns, row)) for row in rows]
+
+        for prop in result:
+            for field in ["amenities", "available_room_types"]:
+                if prop.get(field) and isinstance(prop[field], str):
+                    try:
+                        prop[field] = json.loads(prop[field])
+                    except:
+                        prop[field] = []
+
+        return result
 
     except Exception as e:
-        print(f"[get_properties] error: {e}", file=sys.stderr)
+        print(f"[get_properties] ERROR: {e}")
+        import traceback
+        traceback.print_exc()
+        return []
+    finally:
+        conn.close()
 
-        conn = get_connection()
-        cur = conn.cursor()
-        try:
-            cur.execute("SELECT * FROM listings WHERE status = 'approved' LIMIT 100;")
-            rows = cur.fetchall()
-            return [dict(row) for row in rows] if rows else []
-        except Exception as e2:
-            print(f"[get_properties] fallback error: {e2}", file=sys.stderr)
-            return []
-        finally:
-            conn.close()
 
-def get_property_by_id(property_id: int) -> Optional[Dict[str, Any]]:
+def get_property_by_id(property_id: int):
     """
-    Get single property by ID.
-    Model-compatible adapter function.
-    Returns property dict or None.
+    Get a single property by ID with all details.
+    Returns all fields needed for property_details_view.
     """
+    conn = get_connection()
+    cur = conn.cursor()
+    
     try:
-        row = get_listing_by_id(property_id)
-        return dict(row) if row else None
+        query = """
+            SELECT 
+                id, pm_id, name, address, location, price, description,
+                room_type, total_rooms, available_rooms, available_room_types,
+                amenities, availability_status, image_url, image_url_2,
+                image_url_3, image_url_4, status, created_at, updated_at
+            FROM listings 
+            WHERE id = ? AND status = 'approved'
+        """
+        
+        cur.execute(query, (property_id,))
+        prop = cur.fetchone()
+        
+        if not prop:
+            return None
+        
+        return {
+            "id": prop["id"],
+            "pm_id": prop["pm_id"],
+            "name": prop["name"],
+            "address": prop["address"],
+            "location": prop["location"],
+            "price": prop["price"],
+            "description": prop["description"],
+            "room_type": prop["room_type"],
+            "total_rooms": prop["total_rooms"],
+            "available_rooms": prop["available_rooms"],
+            "available_room_types": prop["available_room_types"],
+            "amenities": prop["amenities"],
+            "availability_status": prop["availability_status"],
+            "image_url": prop["image_url"],
+            "image_url_2": prop["image_url_2"],
+            "image_url_3": prop["image_url_3"],
+            "image_url_4": prop["image_url_4"],
+            "status": prop["status"],
+            "created_at": prop["created_at"],
+            "updated_at": prop["updated_at"]
+        }
+        
     except Exception as e:
-        print(f"[get_property_by_id] error: {e}", file=sys.stderr)
+        print(f"[get_property_by_id] ❌ Error: {e}", file=sys.stderr)
         return None
+    finally:
+        conn.close()
 
 
 # ---------- Extra helpers added from DatabaseManager class ----------

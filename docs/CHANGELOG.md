@@ -3,6 +3,61 @@
 All notable changes to this project will be documented in this file.
 
 ---
+## [2.5.1] - 2025-12-08 (Pontanares) 
+ 
+### Added  
+- **Configuration**
+  - `app/config/colors.py` — Centralized color palette configuration for consistent theming across the application.
+- **Views**
+  - `app/views/property_details_view.py` — Property details page implementation.
+
+### Changed
+- **Database** (`app/storage/db.py`)
+  - Modified database operations and schema adjustments.
+- **UI/UX Improvements**
+  - Updated `app/views/browse_view.py` — Enhanced browsing interface and layout.
+  - Updated `app/views/property_details_view.py` — Refined property details page UI.
+  - Updated `app/views/home_view.py` — Applied new color palette from centralized configuration.
+  - Updated `app/views/login_view.py` — Refreshed login page styling with new color scheme.
+  - Updated `app/views/signup_view.py` — Updated signup page design with consistent color palette.
+- **Theming**
+  - Implemented centralized color palette system across multiple views for consistent branding.
+---
+## [2.5.0] - 2025-12-08 (Enimedez)
+
+### Added
+- Bulk add of UI components and views for the user-facing app; see `app/components/` and `app/views/`.
+- Database improvements and seeding behavior: `app/storage/db.py` and `app/storage/seed_data.py` were extended to support additional features and richer demo data.
+
+### Changed
+- Updated README and documentation to reflect the new files and seeded demo data.
+
+
+---
+
+## [1.5.0] - 2025-12-08 (Enimedez)
+
+### Added
+- `app/main.py` — Major update pushed: refactored application entry point and startup flow.
+
+### Changed
+- Updated `README.md` version to `v1.5.0` to reflect the main.py push and release.
+
+---
+
+## [0.4.1] - 2025-12-07 (Pontanares)
+
+### Added
+- **Views & UX**
+  - `app/views/home_view.py` — Implemented home view with featured listings and calls-to-action.
+  - `app/views/listing_detail_view.py`, `app/views/listing_detail_extended_view.py` — Added listing detail pages with image gallery and contact/reservation actions.
+  - `app/views/login_view.py`, `app/views/signup_view.py` — Implemented authentication views with improved validation flows and redirects.
+
+### Changed
+- **UX Improvements**
+  - Implemented enhanced user experience and validation across login/signup flows and listing interactions.
+
+---
 
 ## [2.5.0] - 2025-12-08 (Enimedez)
 
