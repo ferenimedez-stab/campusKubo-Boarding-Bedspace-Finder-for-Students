@@ -7,6 +7,7 @@ import flet as ft
 from typing import Any
 from storage.db import get_properties
 from components.signup_banner import SignupBanner
+from config.colors import COLORS
 
 
 class BrowseView:
@@ -14,6 +15,7 @@ class BrowseView:
 
     def __init__(self, page: ft.Page):
         self.page = page
+        self.colors = COLORS
 
     def build(self) -> ft.View:
         """Build browse view - matching model"""
@@ -23,18 +25,19 @@ class BrowseView:
 
         # Get properties from database
         properties = get_properties(search_query, filters)
+        
 
         back_button = ft.Container(
             content=ft.Row(
                 controls=[
                     ft.IconButton(
                         icon=ft.Icons.ARROW_BACK,
-                        icon_color="#0078ff",
+                        icon_color=self.colors["primary"],
                         icon_size=24,
                         tooltip="Back to Home",
                         on_click=lambda _: self.page.go("/")
                     ),
-                    ft.Text("Back to Home", size=14)
+                    ft.Text("Back to Home", size=14, color=self.colors["text_dark"])
                 ]
             )
         )
@@ -44,68 +47,85 @@ class BrowseView:
             width=650,
             value=search_query,
             prefix_icon=ft.Icons.SEARCH,
-            on_submit=lambda e: self._perform_search(e.control.value)
+            on_submit=lambda e: self._perform_search(e.control.value),
+            on_change=lambda e: self._perform_search(e.control.value),
+            bgcolor=self.colors["card_bg"],
+            border_color=self.colors["border"],
+            focused_border_color=self.colors["primary"],
+            color=self.colors["text_dark"]
         )
 
-        # Filter controls
-        price_min = ft.TextField(
-            label="Min Price",
-            hint_text="₱1000",
-            width=100,
-            text_size=12,
-            keyboard_type=ft.KeyboardType.NUMBER,
-            dense=True
+        # Filter controls - Load saved values from session
+        saved_price_max = filters.get("price_max", 50000)
+        saved_room_types = filters.get("room_type")
+        saved_amenities = filters.get("amenities")
+        saved_availability = filters.get("availability", "All")
+        saved_location = filters.get("location", "")
+
+        price_label = ft.Text(
+            f"₱1,000 to ₱{int(saved_price_max):,}",
+            size=12,
+            weight=ft.FontWeight.BOLD,
+            color=self.colors["primary"]
         )
 
-        price_max = ft.TextField(
-            label="Max Price",
-            hint_text="₱5000",
-            width=100,
-            text_size=12,
-            keyboard_type=ft.KeyboardType.NUMBER,
-            dense=True
+        price_slider = ft.Slider(
+            min=1000,
+            max=50000,
+            value=saved_price_max,
+            divisions=49,
+            label="{value}",
+            active_color=self.colors["primary"],
+            inactive_color=self.colors["border"],
         )
+        
+        def update_price_label(e):
+            max_val = int(price_slider.value)
+            price_label.value = f"₱1,000 Up to ₱{max_val:,}"
+            price_label.update()
 
-        room_type_dropdown = ft.Dropdown(
-            label="Room Type",
-            hint_text="Select Type",
-            width=210,
-            text_size=12,
-            dense=True,
-            options=[
-                ft.dropdown.Option("Single"),
-                ft.dropdown.Option("Double"),
-                ft.dropdown.Option("Shared"),
-                ft.dropdown.Option("Studio"),
-            ]
-        )
+        price_slider.on_change = update_price_label
 
-        amenities_dropdown = ft.Dropdown(
-            label="Amenities",
-            hint_text="Select amenity",
-            width=210,
-            text_size=12,
-            dense=True,
-            options=[
-                ft.dropdown.Option("WiFi"),
-                ft.dropdown.Option("Air Conditioning"),
-                ft.dropdown.Option("Kitchen"),
-            ]
-        )
+        # Room Type Checkboxes
+        room_types = ["Single", "Double", "Shared", "Studio"]
+        saved_room_types = filters.get("room_type", [])
+
+        room_type_checkboxes = [
+            ft.Checkbox(
+                label=rt,
+                value=rt in saved_room_types
+            )
+            for rt in room_types
+        ]
+
+        # Amenities Checkboxes
+        amenities = ["WiFi", "Air Conditioning", "Kitchen"]
+        saved_amenities = filters.get("amenities", [])
+
+        amenities_checkboxes = [
+            ft.Checkbox(
+                label=a,
+                value=a in saved_amenities
+            )
+            for a in amenities
+        ]
+
 
         availability_dropdown = ft.Dropdown(
-            label="Availability",
             hint_text="Select status",
             width=210,
             text_size=12,
             dense=True,
+            bgcolor=self.colors["background"],
+            border_color=self.colors["border"],
+            color=self.colors["text_dark"],
             options=[
                 ft.dropdown.Option("All"),
                 ft.dropdown.Option("Available"),
                 ft.dropdown.Option("Reserved"),
                 ft.dropdown.Option("Full"),
             ],
-            value="All"
+            value=saved_availability
         )
 
         location_input = ft.TextField(
@@ -113,37 +133,62 @@ class BrowseView:
             hint_text="e.g., Near Campus",
             width=210,
             text_size=12,
-            dense=True
+            dense=True,
+            value=saved_location,
+            bgcolor=self.colors["background"],
+            border_color=self.colors["border"],
+            color=self.colors["text_dark"]
         )
 
         def apply_filters(e):
-            filters = {
-                "price_min": float(price_min.value) if price_min.value else None,
-                "price_max": float(price_max.value) if price_max.value else None,
-                "room_type": room_type_dropdown.value if room_type_dropdown.value else None,
-                "amenities": amenities_dropdown.value if amenities_dropdown.value else None,
+            new_filters = {
+                "price_min": 1000.0,
+                "price_max": float(price_slider.value),
+                "room_type": [cb.label for cb in room_type_checkboxes if cb.value] or None,
+                "amenities": [cb.label for cb in amenities_checkboxes if cb.value] or None,
                 "availability": availability_dropdown.value if availability_dropdown.value and availability_dropdown.value != "All" else None,
                 "location": location_input.value if location_input.value else None
             }
-            self.page.session.set("filters", filters)
-            self.page.go("/browse")
+            new_filters = {k: v for k, v in new_filters.items() if v is not None and v!= [] and v != ""}
+
+            self.page.session.set("filters", new_filters)
+            self.page.update()
+
 
         def clear_filters(e):
+            # Clear session
             self.page.session.set("filters", {})
             self.page.session.set("search_query", "")
-            self.page.go("/browse")
+            
+            # Reset ALL UI controls
+            search_input.value = ""
+            price_slider.value = 50000
+            price_label.value = "₱1,000 to ₱50,000"
+            price_label.update()
+            
+            for cb in room_type_checkboxes:
+                cb.value = False
+            for cb in amenities_checkboxes:
+                cb.value = False
+            
+            availability_dropdown.value = "All"
+            location_input.value = ""
+            
+            # Update everything
+            self.page.update()
 
         sidebar = ft.Container(
             width=230,
             padding=15,
-            bgcolor="#ffffff",
+            bgcolor=self.colors["card_bg"],
             border_radius=10,
+            border=ft.border.all(1, self.colors["border"]),
             content=ft.Column(
                 spacing=8,
                 scroll=ft.ScrollMode.AUTO,
                 controls=[
-                    ft.Text("Filters", size=24, weight=ft.FontWeight.BOLD, color="Black"),
-                    ft.Divider(height=1, color="#ddd"),
+                    ft.Text("Filters", size=24, weight=ft.FontWeight.BOLD, color=self.colors["text_dark"]),
+                    ft.Divider(height=1, color=self.colors["border"]),
 
                     # Price Range Section
                     ft.Container(
@@ -151,12 +196,13 @@ class BrowseView:
                         content=ft.Column(
                             spacing=5,
                             controls=[
-                                ft.Text("💰 Price Range", weight=ft.FontWeight.BOLD, size=13, color="Green"),
-                                ft.Row([price_min, price_max], spacing=8),
+                                ft.Text("💰 Price Range", weight=ft.FontWeight.BOLD, size=13, color=self.colors["secondary"]),
+                                price_label,
+                                price_slider,
                             ]
                         )
                     ),
-                    ft.Divider(height=1, color="#e0e0e0"),
+                    ft.Divider(height=1, color=self.colors["border"]),
 
                     # Room Type Section
                     ft.Container(
@@ -164,12 +210,11 @@ class BrowseView:
                         content=ft.Column(
                             spacing=5,
                             controls=[
-                                ft.Text("🛏 Room Type", weight=ft.FontWeight.BOLD, size=13, color="yellow"),
-                                room_type_dropdown,
+                                ft.Text("🛏 Room Type", weight=ft.FontWeight.BOLD, size=13, color=self.colors["secondary"]),
+                                *room_type_checkboxes
                             ]
                         )
                     ),
-                    ft.Divider(height=1, color="#e0e0e0"),
 
                     # Amenities Section
                     ft.Container(
@@ -177,12 +222,13 @@ class BrowseView:
                         content=ft.Column(
                             spacing=5,
                             controls=[
-                                ft.Text("🏠 Amenities", weight=ft.FontWeight.BOLD, size=13, color="Magenta"),
-                                amenities_dropdown,
+                                ft.Text("🏠 Amenities", weight=ft.FontWeight.BOLD, size=13, color=self.colors["secondary"]),
+                                *amenities_checkboxes
                             ]
                         )
                     ),
-                    ft.Divider(height=1, color="#e0e0e0"),
+
+                    ft.Divider(height=1, color=self.colors["border"]),
 
                     # Availability Section
                     ft.Container(
@@ -190,12 +236,12 @@ class BrowseView:
                         content=ft.Column(
                             spacing=5,
                             controls=[
-                                ft.Text("📅 Availability", weight=ft.FontWeight.BOLD, size=13, color="Cyan"),
+                                ft.Text("📅 Availability", weight=ft.FontWeight.BOLD, size=13, color=self.colors["secondary"]),
                                 availability_dropdown,
                             ]
                         )
                     ),
-                    ft.Divider(height=1, color="#e0e0e0"),
+                    ft.Divider(height=1, color=self.colors["border"]),
 
                     # Location Section
                     ft.Container(
@@ -203,7 +249,7 @@ class BrowseView:
                         content=ft.Column(
                             spacing=5,
                             controls=[
-                                ft.Text("📍 Location", weight=ft.FontWeight.BOLD, size=13, color="orange"),
+                                ft.Text("📍 Location", weight=ft.FontWeight.BOLD, size=13, color=self.colors["secondary"]),
                                 location_input,
                             ]
                         )
@@ -215,15 +261,19 @@ class BrowseView:
                         "Apply Filters",
                         width=200,
                         height=45,
-                        bgcolor="#0078ff",
-                        color="white",
+                        bgcolor=self.colors["primary"],
+                        color=self.colors["card_bg"],
                         on_click=apply_filters
                     ),
                     ft.OutlinedButton(
                         "Clear Filters",
                         width=200,
                         height=45,
-                        on_click=clear_filters
+                        on_click=clear_filters,
+                        style=ft.ButtonStyle(
+                            color=self.colors["text_dark"],
+                            side=ft.BorderSide(color=self.colors["border"], width=1)
+                        )
                     )
                 ]
             )
@@ -243,16 +293,21 @@ class BrowseView:
                 self.page.session.set("selected_property_id", property_id)
                 self.page.go("/property-details")
 
+            # Choose color based on availability
+            avail_bg = self.colors["available"] if availability == "Available" else self.colors["unavailable"]
+            avail_text = self.colors["card_bg"]
+
             return ft.Container(
-                bgcolor="#FFFFFF",
+                bgcolor=self.colors["card_bg"],
                 width=280,
                 padding=15,
                 margin=10,
                 border_radius=8,
+                border=ft.border.all(1, self.colors["border"]),
                 shadow=ft.BoxShadow(
                     blur_radius=15,
                     spread_radius=1,
-                    color=ft.Colors.with_opacity(0.1, "#000000")
+                    color=ft.Colors.with_opacity(0.15, self.colors["text_light"])
                 ),
                 content=ft.Column(
                     spacing=10,
@@ -260,7 +315,7 @@ class BrowseView:
                         ft.Container(
                             width=250,
                             height=150,
-                            bgcolor="#dfdfdf",
+                            bgcolor=self.colors["border"],
                             border_radius=8,
                             clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
                             content=ft.Image(
@@ -268,40 +323,40 @@ class BrowseView:
                                 width=250,
                                 height=150,
                                 fit=ft.ImageFit.COVER,
-                            ) if image_url else ft.Icon(ft.Icons.HOME, size=60, color="#999")
+                            ) if image_url else ft.Icon(ft.Icons.HOME, size=60, color=self.colors["text_light"])
                         ),
                         ft.Container(
                             padding=5,
                             content=ft.Column(
                                 spacing=5,
                                 controls=[
-                                    ft.Text(name, weight=ft.FontWeight.BOLD, size=16, max_lines=1, overflow=ft.TextOverflow.ELLIPSIS),
+                                    ft.Text(name, weight=ft.FontWeight.BOLD, size=16, max_lines=1, overflow=ft.TextOverflow.ELLIPSIS, color=self.colors["text_dark"]),
                                     ft.Row([
-                                        ft.Icon(ft.Icons.LOCATION_ON, size=16, color="#666"),
-                                        ft.Text(location, size=14, color="#666", max_lines=1)
+                                        ft.Icon(ft.Icons.LOCATION_ON, size=16, color=self.colors["secondary"]),
+                                        ft.Text(location, size=14, color=self.colors["text_light"], max_lines=1)
                                     ], spacing=4),
-                                    ft.Text(price, size=18, color="#0078ff", weight=ft.FontWeight.BOLD),
+                                    ft.Text(price, size=18, color=self.colors["primary"], weight=ft.FontWeight.BOLD),
                                     ft.Container(
                                         padding=ft.padding.symmetric(vertical=2, horizontal=6),
-                                        bgcolor="#e0e0e0" if availability == "Available" else "#ffcccc",
+                                        bgcolor=avail_bg,
                                         border_radius=6,
                                         content=ft.Text(
                                             availability,
                                             size=12,
-                                            color="#4caf50" if availability == "Available" else "#f44336",
+                                            color=avail_text,
                                             weight=ft.FontWeight.BOLD,
                                         )
                                     ),
                                     ft.Container(
                                         padding=ft.padding.symmetric(vertical=4, horizontal=8),
-                                        bgcolor="#e3f2fd",
+                                        bgcolor=self.colors["background"],
                                         border_radius=4,
                                         content=ft.Row(
                                             alignment=ft.MainAxisAlignment.CENTER,
                                             spacing=5,
                                             controls=[
-                                                ft.Icon(ft.Icons.INFO_OUTLINE, size=14, color="#1976d2"),
-                                                ft.Text("Sign in to reserve", size=11, color="#1565c0", italic=True)
+                                                ft.Icon(ft.Icons.INFO_OUTLINE, size=14, color=self.colors["primary"]),
+                                                ft.Text("Sign in to reserve", size=11, color=self.colors["text_dark"], italic=True)
                                             ]
                                         )
                                     )
@@ -314,12 +369,101 @@ class BrowseView:
                 ink=True,
                 tooltip="Click to view details"
             )
+        
+        active_filter_chips = []
 
+        # Price filter chip
+        if filters.get("price_max") and filters["price_max"] < 50000:
+            active_filter_chips.append(
+                ft.Chip(
+                    label=ft.Text(f"Max: ₱{int(filters['price_max']):,}", color=self.colors["text_dark"]),
+                    bgcolor=self.colors["background"],
+                    delete_icon_color=self.colors["primary"],
+                    on_delete=lambda e: clear_filters(e)  # optionally clear all price filter
+                )
+            )
+
+        # Room type chips (multi-select)
+        if filters.get("room_type"):
+            for rt in filters["room_type"]:
+                def remove_rt(e, rt=rt):
+                    new_filters = filters.copy()
+                    new_filters["room_type"] = [r for r in filters["room_type"] if r != rt]
+                    if not new_filters["room_type"]:
+                        new_filters.pop("room_type")
+                    self.page.session.set("filters", new_filters)
+                    self.page.update()
+
+                active_filter_chips.append(
+                    ft.Chip(
+                        label=ft.Text(f"Type: {rt}", color=self.colors["text_dark"]),
+                        bgcolor=self.colors["background"],
+                        delete_icon_color=self.colors["primary"],
+                        on_delete=remove_rt
+                    )
+                )
+
+        # Amenities chips (multi-select)
+        if filters.get("amenities"):
+            for amen in filters["amenities"]:
+                def remove_amen(e, amen=amen):
+                    new_filters = filters.copy()
+                    new_filters["amenities"] = [a for a in filters["amenities"] if a != amen]
+                    if not new_filters["amenities"]:
+                        new_filters.pop("amenities")
+                    self.page.session.set("filters", new_filters)
+                    self.page.update()
+
+                active_filter_chips.append(
+                    ft.Chip(
+                        label=ft.Text(f"Amenity: {amen}", color=self.colors["text_dark"]),
+                        bgcolor=self.colors["background"],
+                        delete_icon_color=self.colors["primary"],
+                        on_delete=remove_amen
+                    )
+                )
+
+        # Availability chip
+        if filters.get("availability"):
+            def remove_avail(e):
+                new_filters = filters.copy()
+                new_filters.pop("availability", None)
+                self.page.session.set("filters", new_filters)
+                self.page.update()
+
+            active_filter_chips.append(
+                ft.Chip(
+                    label=ft.Text(f"Status: {filters['availability']}", color=self.colors["text_dark"]),
+                    bgcolor=self.colors["background"],
+                    delete_icon_color=self.colors["primary"],
+                    on_delete=remove_avail
+                )
+            )
+
+        # Location chip
+        if filters.get("location"):
+            def remove_location(e):
+                new_filters = filters.copy()
+                new_filters.pop("location", None)
+                self.page.session.set("filters", new_filters)
+                self.page.update()
+
+            active_filter_chips.append(
+                ft.Chip(
+                    label=ft.Text(f"Location: {filters['location']}", color=self.colors["text_dark"]),
+                    bgcolor=self.colors["background"],
+                    delete_icon_color=self.colors["primary"],
+                    on_delete=remove_location
+                )
+            )
+
+        # --- Then use it in property_grid ---
         property_grid = ft.Container(
             expand=True,
             padding=15,
-            bgcolor="#ffffff",
+            bgcolor=self.colors["card_bg"],
             border_radius=10,
+            border=ft.border.all(1, self.colors["border"]),
             content=ft.Column(
                 spacing=15,
                 scroll=ft.ScrollMode.AUTO,
@@ -328,15 +472,26 @@ class BrowseView:
                         f"Search Results for '{search_query}'" if search_query else "All Available Properties",
                         size=22,
                         weight=ft.FontWeight.BOLD,
-                        color="Black"
+                        color=self.colors["text_dark"]
                     ),
                     ft.Text(
                         f"Showing {len(properties)} properties",
                         size=14,
-                        color="#666"
+                        color=self.colors["text_light"]
                     ),
-                    ft.Divider(height=1, color="#e0e0e0"),
 
+                    # Active filters display container
+                    ft.Container(
+                        content=ft.Row(
+                            wrap=True,
+                            spacing=8,
+                            controls=active_filter_chips
+                        ),
+                        visible=len(active_filter_chips) > 0
+                    ),
+                    ft.Divider(height=1, color=self.colors["border"]),
+
+                    # Properties grid
                     ft.Container(
                         content=ft.Row(
                             wrap=True,
@@ -351,14 +506,14 @@ class BrowseView:
                                 horizontal_alignment=ft.CrossAxisAlignment.CENTER,
                                 spacing=15,
                                 controls=[
-                                    ft.Icon(ft.Icons.SEARCH_OFF, size=80, color="#ccc"),
-                                    ft.Text("No properties found", size=20, color="#666", weight=ft.FontWeight.BOLD),
-                                    ft.Text("Try adjusting your search or filters", size=14, color="black"),
+                                    ft.Icon(ft.Icons.SEARCH_OFF, size=80, color=self.colors["border"]),
+                                    ft.Text("No properties found", size=20, color=self.colors["text_dark"], weight=ft.FontWeight.BOLD),
+                                    ft.Text("Try adjusting your search or filters", size=14, color=self.colors["text_light"]),
                                     ft.ElevatedButton(
                                         "Clear Filters",
                                         on_click=clear_filters,
-                                        bgcolor="#0078ff",
-                                        color="white"
+                                        bgcolor=self.colors["primary"],
+                                        color=self.colors["card_bg"]
                                     )
                                 ]
                             )
@@ -367,6 +522,7 @@ class BrowseView:
                 ]
             )
         )
+
 
         signup_banner = SignupBanner(
             page=self.page,
@@ -388,10 +544,11 @@ class BrowseView:
             "/browse",
             padding=25,
             scroll=ft.ScrollMode.AUTO,
+            bgcolor=self.colors["background"],
             controls=[
                 back_button,
                 ft.Container(height=10),
-                ft.Text("Browse Listings", size=28, weight=ft.FontWeight.BOLD),
+                ft.Text("Browse Listings", size=28, weight=ft.FontWeight.BOLD, color=self.colors["text_dark"]),
                 ft.Container(height=10),
                 search_input,
                 ft.Container(height=20),
@@ -402,4 +559,4 @@ class BrowseView:
 
     def _perform_search(self, query):
         self.page.session.set("search_query", query)
-        self.page.go("/browse")
+        self.page.update()
