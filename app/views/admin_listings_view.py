@@ -4,8 +4,10 @@ import flet as ft
 from services.listing_service import ListingService
 from services.admin_service import AdminService
 from components.navbar import DashboardNavBar
+from components.listing_card import create_admin_listing_card
 from state.session_state import SessionState
 from collections import defaultdict
+from services.refresh_service import register as _register_refresh
 
 
 class AdminListingsView:
@@ -58,6 +60,40 @@ class AdminListingsView:
         self.listings_column = ft.Column(expand=True)
         self.tab_content = ft.Column(expand=True)
 
+        # Create/edit listing form fields
+        self.listing_form_pm = ft.Dropdown(label="PM Owner", width=280)
+        self.listing_form_address = ft.TextField(label="Address", width=360)
+        self.listing_form_price = ft.TextField(label="Price (PHP)", width=180)
+        self.listing_form_description = ft.TextField(label="Description", width=360, min_lines=3, max_lines=5)
+        self.listing_form_lodging = ft.TextField(label="Lodging Details", width=360, min_lines=2, max_lines=4)
+        self.listing_form_status = ft.Dropdown(
+            label="Status",
+            options=[
+                ft.dropdown.Option("Pending", "pending"),
+                ft.dropdown.Option("Approved", "approved"),
+                ft.dropdown.Option("Active", "active"),
+                ft.dropdown.Option("Rejected", "rejected"),
+                ft.dropdown.Option("Archived", "archived")
+            ],
+            value="pending",
+            width=220
+        )
+        self._editing_listing = None
+        # Inline form container visibility/state
+        self.inline_form_container = ft.Container(visible=False)
+        self.inline_form_visible = False
+
+        try:
+            _register_refresh(self._on_global_refresh)
+        except Exception:
+            pass
+
+    def _on_global_refresh(self):
+        try:
+            self.refresh_listings()
+        except Exception:
+            pass
+
 
     # ----------------------------------------------------
     # Build view
@@ -71,6 +107,39 @@ class AdminListingsView:
 
         self._populate_pm_filter()
         self.refresh_listings()
+
+        # Build inline form content
+        form_action_label = "Update Listing" if self._editing_listing else "Create Listing"
+        self.inline_form_container.visible = self.inline_form_visible
+        self.inline_form_container.content = ft.Container(
+            bgcolor=ft.Colors.GREY_50,
+            border=ft.border.all(1, ft.Colors.GREY_200),
+            border_radius=10,
+            padding=15,
+            content=ft.Column(
+                spacing=12,
+                controls=[
+                    ft.Row([
+                        ft.Text(form_action_label, size=16, weight=ft.FontWeight.BOLD),
+                        ft.Container(expand=True),
+                        ft.OutlinedButton("Cancel", on_click=lambda e: self._hide_listing_form()),
+                        ft.ElevatedButton("Save", icon=ft.Icons.SAVE, on_click=lambda e: self._submit_listing_form()),
+                    ], alignment=ft.MainAxisAlignment.START),
+                    ft.ResponsiveRow(
+                        spacing=12,
+                        run_spacing=12,
+                        controls=[
+                            ft.Container(content=self.listing_form_address, col={"xs":12, "md":6}),
+                            ft.Container(content=self.listing_form_price, col={"xs":12, "md":3}),
+                            ft.Container(content=self.listing_form_status, col={"xs":12, "md":3}),
+                            ft.Container(content=self.listing_form_pm, col={"xs":12, "md":6}),
+                            ft.Container(content=self.listing_form_description, col={"xs":12, "md":12}),
+                            ft.Container(content=self.listing_form_lodging, col={"xs":12, "md":12}),
+                        ],
+                    ),
+                ],
+            )
+        )
 
         return ft.View(
             "/admin_listings",
@@ -87,29 +156,38 @@ class AdminListingsView:
                             ft.Text("Listing Management", size=26, weight=ft.FontWeight.BOLD)
                         ], alignment=ft.MainAxisAlignment.START),
 
-                        # Tabs for status filtering
-                        ft.Tabs(
-                            selected_index=self._get_tab_index(),
-                            on_change=self._on_tab_change,
-                            tabs=[
-                                ft.Tab(
-                                    text="Active",
-                                    content=self.tab_content
+                        # Tabs for status filtering (render labels only).
+                        # We avoid embedding the same `tab_content` control into
+                        # multiple Tab.content instances because reusing a control
+                        # in multiple parents can lead to layout/display issues.
+                        ft.Row(
+                            spacing=12,
+                            alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                            controls=[
+                                ft.Container(
+                                    expand=True,
+                                    content=ft.Tabs(
+                                        selected_index=self._get_tab_index(),
+                                        on_change=self._on_tab_change,
+                                        tabs=[
+                                            ft.Tab(text="Active"),
+                                            ft.Tab(text="Pending Approval"),
+                                            ft.Tab(text="Rejected"),
+                                            ft.Tab(text="Archived"),
+                                        ]
+                                    )
                                 ),
-                                ft.Tab(
-                                    text="Pending Approval",
-                                    content=self.tab_content
-                                ),
-                                ft.Tab(
-                                    text="Rejected",
-                                    content=self.tab_content
-                                ),
-                                ft.Tab(
-                                    text="Archived",
-                                    content=self.tab_content
+                                ft.ElevatedButton(
+                                    "Add Listing",
+                                    icon=ft.Icons.ADD,
+                                    on_click=lambda e: self._show_listing_form()
                                 )
                             ]
                         ),
+
+                        # Inline create/edit form
+                        self.inline_form_container,
 
                         ft.Divider(),
 
@@ -135,6 +213,11 @@ class AdminListingsView:
                         ),
 
                         ft.Divider(),
+
+                        # Main tab content area (populated by `refresh_listings`).
+                        # Use a fixed-height container like other admin views for
+                        # visual consistency and to avoid header/content overlap.
+                        ft.Container(height=520, content=self.tab_content),
 
                         # Analytics section (optional)
                         ft.ExpansionTile(
@@ -250,10 +333,10 @@ class AdminListingsView:
             # Pie chart representation
             ft.Container(
                 content=ft.Row(pie_sections, spacing=0),
-                height=40,
+                height=120,
                 alignment=ft.alignment.center
             ),
-            ft.Container(height=15),
+            ft.Container(height=12),
             # Legend
             ft.Column(legend_items, spacing=5)
         ], spacing=5)
@@ -266,8 +349,10 @@ class AdminListingsView:
         all_listings = self.listing_service.get_all_listings()
 
         # Filter by tab (status)
+        # Note: seeded demo data uses status 'approved' for active listings,
+        # so include 'approved' alongside 'active' to show seeded rows.
         status_map = {
-            "active": ["active"],
+            "active": ["active", "approved", "available"],
             "pending": ["pending"],
             "rejected": ["rejected"],
             "archived": ["archived"]
@@ -341,35 +426,11 @@ class AdminListingsView:
     def build_listing_card(self, listing):
         """Creates a compact card for each listing in grid view."""
         images = getattr(listing, "images", [])
-        address = getattr(listing, "address", "No Address")
         pm_email = getattr(listing, "pm_email", "N/A")
-        price = getattr(listing, "price", 0)
         status = getattr(listing, "status", "Unknown")
-        description = getattr(listing, "description", "")
-
-        # Safely format price
-        try:
-            price_val = float(price)
-            price_text = f"\u20b1{price_val:,.2f}"
-        except (TypeError, ValueError):
-            try:
-                price_val = float(str(price).replace(',', '').strip())
-                price_text = f"\u20b1{price_val:,.2f}"
-            except Exception:
-                price_text = f"\u20b1{price}"
-
-        # Status color
         status_lower = str(status).lower()
-        if status_lower == "active":
-            status_color = ft.Colors.GREEN
-        elif status_lower == "pending":
-            status_color = ft.Colors.ORANGE
-        elif status_lower == "rejected":
-            status_color = ft.Colors.RED
-        else:
-            status_color = ft.Colors.GREY
+        listing_id = getattr(listing, "id", None)
 
-        # Action buttons
         def _confirm_listing_action(action: str, lid: int):
             title = "Confirm"
             msg = f"Are you sure you want to {action} this listing?"
@@ -385,90 +446,216 @@ class AdminListingsView:
             dlg.open = True
             self.page.update()
 
-        # Thumbnail image
-        image_widget = ft.Container(
-            height=150,
-            bgcolor=ft.Colors.GREY_200,
-            border_radius=8,
-            content=ft.Icon(ft.Icons.IMAGE, size=50, color=ft.Colors.GREY)
+        def preview_handler(_):
+            if listing_id:
+                try:
+                    self.page.session.set("selected_property_id", listing_id)
+                except Exception:
+                    pass
+            self.page.go("/property-details")
+
+        edit_handler = None
+        if status_lower in ["active", "approved", "pending"]:
+            edit_handler = lambda e, l=listing: self._show_listing_form(l)
+
+        approve_handler = None
+        reject_handler = None
+        if status_lower == "pending" and listing_id is not None:
+            approve_handler = lambda e, lid=listing_id: _confirm_listing_action('approve', lid)
+            reject_handler = lambda e, lid=listing_id: _confirm_listing_action('reject', lid)
+
+        delete_handler = None
+        if status_lower not in ["pending"] and listing_id is not None:
+            delete_handler = lambda e, lid=listing_id: self._confirm_delete_listing(lid)
+
+        is_available = status_lower in ("active", "approved", "available")
+
+        return create_admin_listing_card(
+            listing=listing,
+            images=images,
+            status=status,
+            pm_contact=pm_email,
+            is_available=is_available,
+            on_preview=preview_handler,
+            on_edit=edit_handler,
+            on_approve=approve_handler,
+            on_reject=reject_handler,
+            on_delete=delete_handler,
         )
-        if images and len(images) > 0:
+
+    # ----------------------------------------------------
+    # Create/Edit listing inline form methods
+    # ----------------------------------------------------
+    def _reset_listing_form(self):
+        self._editing_listing = None
+        self.listing_form_address.value = ''
+        self.listing_form_price.value = ''
+        self.listing_form_description.value = ''
+        self.listing_form_lodging.value = ''
+        self.listing_form_status.value = 'pending'
+        self.listing_form_pm.value = None
+
+    def _populate_pm_dropdown(self):
+        try:
+            pms = self.admin_service.get_all_users_by_role('pm')
+            pm_options = [ft.dropdown.Option(f"{pm.full_name} ({pm.email})", str(pm.id)) for pm in pms]
+            self.listing_form_pm.options = pm_options
+        except Exception:
+            self.listing_form_pm.options = []
+
+    def _show_listing_form(self, listing=None):
+        """Show inline create/edit form with populated fields."""
+        self._populate_pm_dropdown()
+
+        if listing:
+            self._editing_listing = listing
+            self.listing_form_address.value = getattr(listing, 'address', '') or ''
             try:
-                image_widget = ft.Image(src=images[0], width=250, height=150, fit=ft.ImageFit.COVER)
+                price = float(getattr(listing, 'price', 0) or 0)
+                self.listing_form_price.value = str(int(price)) if price == int(price) else str(price)
+            except (ValueError, TypeError):
+                self.listing_form_price.value = str(getattr(listing, 'price', '') or '')
+            self.listing_form_description.value = getattr(listing, 'description', '') or ''
+            self.listing_form_lodging.value = getattr(listing, 'lodging_details', '') or ''
+            self.listing_form_status.value = getattr(listing, 'status', 'pending') or 'pending'
+            pm_id = getattr(listing, 'pm_id', None)
+            self.listing_form_pm.value = str(pm_id) if pm_id else None
+        else:
+            self._reset_listing_form()
+
+        self.inline_form_visible = True
+        self.inline_form_container.visible = True
+        try:
+            self.page.update()
+        except Exception:
+            pass
+
+    def _hide_listing_form(self, *_):
+        self.inline_form_visible = False
+        self.inline_form_container.visible = False
+        self._reset_listing_form()
+        try:
+            self.page.update()
+        except Exception:
+            pass
+
+    def _submit_listing_form(self):
+        """Validate and submit the listing form."""
+        # Validate required fields
+        address = (self.listing_form_address.value or "").strip()
+        price_str = (self.listing_form_price.value or "").strip()
+        pm_id_str = self.listing_form_pm.value
+        status = self.listing_form_status.value or 'pending'
+        description = (self.listing_form_description.value or "").strip()
+        lodging = (self.listing_form_lodging.value or "").strip()
+
+        # Validate address
+        if not address:
+            self.page.open(ft.SnackBar(ft.Text("Address is required")))
+            return
+
+        # Validate price
+        try:
+            price = float(price_str)
+            if price < 0:
+                raise ValueError("Price cannot be negative")
+        except (ValueError, TypeError):
+            self.page.open(ft.SnackBar(ft.Text("Enter a valid price")))
+            return
+
+        # Validate PM owner
+        if not pm_id_str:
+            self.page.open(ft.SnackBar(ft.Text("Please select a PM owner")))
+            return
+
+        try:
+            pm_id = int(pm_id_str)
+        except (ValueError, TypeError):
+            self.page.open(ft.SnackBar(ft.Text("Invalid PM owner")))
+            return
+
+        # Call service
+        if self._editing_listing:
+            # Update existing listing
+            success, message = self.admin_service.update_listing_admin(
+                listing_id=self._editing_listing.id,
+                address=address,
+                price=price,
+                description=description,
+                lodging_details=lodging,
+                status=status,
+                pm_id=pm_id
+            )
+        else:
+            # Create new listing
+            success, message, listing_id = self.admin_service.create_listing_admin(
+                address=address,
+                price=price,
+                description=description,
+                lodging_details=lodging,
+                status=status,
+                pm_id=pm_id
+            )
+
+        # Show feedback
+        self.page.open(ft.SnackBar(ft.Text(message)))
+
+        # Close form and refresh if successful
+        if success:
+            # Notify global refresh service
+            try:
+                from services.refresh_service import notify as _notify
+                _notify()
             except Exception:
                 pass
 
-        return ft.Container(
-            expand=True,
-            padding=12,
-            bgcolor=ft.Colors.WHITE,
-            border_radius=8,
-            border=ft.border.all(1, ft.Colors.GREY_300),
-            content=ft.Column([
-                # Image or placeholder
-                image_widget,
-
-                ft.SizedBox(height=8),
-
-                # Address
-                ft.Text(address, size=14, weight=ft.FontWeight.BOLD, max_lines=2),
-
-                # Description snippet
-                ft.Text(description[:80] + "..." if len(description) > 80 else description,
-                       size=11, color=ft.Colors.GREY_700, max_lines=2),
-
-                ft.SizedBox(height=8),
-
-                # Price and Status
-                ft.Row([
-                    ft.Text(price_text, size=12, weight=ft.FontWeight.BOLD, color=ft.Colors.BLUE),
-                    ft.Chip(label=ft.Text(status, size=10), color=status_color)
-                ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
-
-                ft.SizedBox(height=10),
-
-                # Action buttons
-                ft.Row([
-                    ft.ElevatedButton(
-                        "View",
-                        width=80,
-                        height=36,
-                        on_click=lambda e: self.page.go(f"/admin_listing/{listing.id}")
-                    ),
-                    ft.OutlinedButton(
-                        "Edit",
-                        width=80,
-                        height=36,
-                        on_click=lambda e: self.page.go(f"/admin_listing/{listing.id}")
-                    ) if status_lower in ["active", "pending"] else ft.Container(),
-                    (ft.ElevatedButton(
-                        "Approve",
-                        width=70,
-                        height=36,
-                        bgcolor=ft.Colors.GREEN,
-                        color=ft.Colors.WHITE,
-                        on_click=lambda e, lid=listing.id: _confirm_listing_action('approve', lid)
-                    ) if status_lower == "pending" else
-                    ft.ElevatedButton(
-                        "Delete",
-                        width=70,
-                        height=36,
-                        bgcolor=ft.Colors.RED,
-                        color=ft.Colors.WHITE,
-                        on_click=lambda e: self.delete_listing(listing.id)
-                    ))
-                ], spacing=5)
-            ], spacing=5)
-        )
-
-    # ----------------------------------------------------
+            self._hide_listing_form()
+            self.refresh_listings()
     # Deletion handler
     # ----------------------------------------------------
-    def delete_listing(self, listing_id):
+    def _confirm_delete_listing(self, listing_id):
+        """Show confirmation dialog before deleting a listing."""
+        dlg = ft.AlertDialog(
+            modal=True,
+            title=ft.Text("Confirm Delete", weight=ft.FontWeight.BOLD),
+            content=ft.Container(
+                content=ft.Text(
+                    "Are you sure you want to permanently delete this listing? This action cannot be undone.",
+                    size=14
+                ),
+                width=400
+            ),
+            actions=[
+                ft.TextButton("Cancel", on_click=lambda e: self._close_dialog()),
+                ft.ElevatedButton(
+                    "Delete",
+                    bgcolor=ft.Colors.RED,
+                    color=ft.Colors.WHITE,
+                    on_click=lambda e, lid=listing_id: self._perform_delete_listing(lid)
+                )
+            ],
+            actions_alignment=ft.MainAxisAlignment.END
+        )
+        setattr(self.page, "dialog", dlg)
+        dlg.open = True
+        self.page.update()
+
+    def _perform_delete_listing(self, listing_id):
+        """Perform the actual deletion after confirmation."""
+        self._close_dialog()
+
         # Use admin-level deletion
         ok, msg = self.listing_service.delete_listing_by_admin(listing_id)
         snack_bar = ft.SnackBar(ft.Text(msg))
         self.page.open(snack_bar)
+
+        # Notify global refresh service
+        try:
+            from services.refresh_service import notify as _notify
+            _notify()
+        except Exception:
+            pass
+
         self.refresh_listings()
     def _close_dialog(self):
         dlg = getattr(self.page, "dialog", None)
@@ -489,4 +676,12 @@ class AdminListingsView:
             msg = 'Listing rejected' if ok else 'Failed to reject listing'
 
         self.page.open(ft.SnackBar(ft.Text(msg)))
+
+        # Notify global refresh service
+        try:
+            from services.refresh_service import notify as _notify
+            _notify()
+        except Exception:
+            pass
+
         self.refresh_listings()

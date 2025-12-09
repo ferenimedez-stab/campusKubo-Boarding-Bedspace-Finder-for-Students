@@ -6,7 +6,9 @@ from storage.db import (
     get_connection,
     get_reservation as db_get_reservation,
 )
+from services.refresh_service import notify as _notify_refresh
 from typing import Tuple, Optional, List, Dict, Any
+from datetime import datetime
 
 
 class ReservationService:
@@ -180,6 +182,10 @@ class ReservationService:
             cursor.execute("UPDATE reservations SET status = ? WHERE id = ?", (new_status, reservation_id))
             conn.commit()
             if cursor.rowcount > 0:
+                try:
+                    _notify_refresh()
+                except Exception:
+                    pass
                 return True
             print(f"[update_reservation_status] Reservation not found: {reservation_id}")
             return False
@@ -200,7 +206,13 @@ class ReservationService:
         try:
             cursor.execute("DELETE FROM reservations WHERE id = ?", (reservation_id,))
             conn.commit()
-            return cursor.rowcount > 0
+            ok = cursor.rowcount > 0
+            if ok:
+                try:
+                    _notify_refresh()
+                except Exception:
+                    pass
+            return ok
         except Exception as e:
             conn.rollback()
             print(f"[delete_reservation] error for reservation {reservation_id}: {e}")
@@ -227,3 +239,60 @@ class ReservationService:
         data = cursor.fetchall()
         conn.close()
         return [(row[0], row[1]) for row in data]
+
+    def create_reservation_admin(self, listing_id: int, tenant_id: int, start_date: str, end_date: str, status: str = "pending") -> Tuple[bool, str, Optional[int]]:
+        """Admin-level reservation creation (can set any status)."""
+        if not start_date or not end_date:
+            return False, "Start and end dates are required", None
+        if not status:
+            return False, "Status is required", None
+
+        conn = get_connection()
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                """INSERT INTO reservations (listing_id, tenant_id, start_date, end_date, status, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (listing_id, tenant_id, start_date, end_date, status, datetime.utcnow().isoformat())
+            )
+            conn.commit()
+            res_id = cur.lastrowid
+            if res_id:
+                try:
+                    _notify_refresh()
+                except Exception:
+                    pass
+                return True, "Reservation created successfully", res_id
+            return False, "Failed to create reservation", None
+        except Exception as e:
+            conn.rollback()
+            return False, f"Error creating reservation: {str(e)}", None
+        finally:
+            conn.close()
+
+    def update_reservation_admin(self, reservation_id: int, listing_id: int, tenant_id: int, start_date: str, end_date: str, status: str) -> Tuple[bool, str]:
+        """Admin-level reservation update (can change all fields)."""
+        if not start_date or not end_date or not status:
+            return False, "Start date, end date, and status are required"
+
+        conn = get_connection()
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                """UPDATE reservations SET listing_id = ?, tenant_id = ?, start_date = ?, end_date = ?, status = ?
+                   WHERE id = ?""",
+                (listing_id, tenant_id, start_date, end_date, status, reservation_id)
+            )
+            conn.commit()
+            if cur.rowcount > 0:
+                try:
+                    _notify_refresh()
+                except Exception:
+                    pass
+                return True, "Reservation updated successfully"
+            return False, "Reservation not found"
+        except Exception as e:
+            conn.rollback()
+            return False, f"Error updating reservation: {str(e)}"
+        finally:
+            conn.close()

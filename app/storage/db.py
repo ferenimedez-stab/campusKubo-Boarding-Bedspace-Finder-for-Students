@@ -19,7 +19,7 @@ try:
 except Exception:
     _PH = None
 from datetime import datetime, timedelta
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Tuple
 
 import sqlite3
 import json
@@ -69,6 +69,78 @@ def verify_password(stored_hash: str, password: str) -> bool:
         return hashlib.sha256(password.encode('utf-8')).hexdigest() == stored_hash
     except Exception:
         return False
+
+
+def log_login_attempt(email: str, success: bool, ip_address: Optional[str] = None, user_agent: Optional[str] = None) -> None:
+    """
+    Log a login attempt (success or failure) for audit and rate limiting.
+    """
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute(
+            "INSERT INTO login_attempts (email, attempt_time, success, ip_address, user_agent) VALUES (?, ?, ?, ?, ?);",
+            (email.strip().lower(), _now_iso(), 1 if success else 0, ip_address, user_agent)
+        )
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"[log_login_attempt] error: {e}", file=sys.stderr)
+
+
+def is_account_locked(email: str, max_attempts: int = 5, lockout_seconds: int = 30) -> Tuple[bool, Optional[str]]:
+    """
+    Check if an account is locked due to too many failed login attempts.
+    Returns (is_locked: bool, unlock_time: Optional[str])
+    """
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
+        email_clean = email.strip().lower()
+
+        # Calculate cutoff time for lockout window
+        cutoff = (datetime.utcnow() - timedelta(seconds=lockout_seconds)).isoformat()
+
+        # Count failed attempts in the lockout window
+        cur.execute(
+            "SELECT COUNT(*) as count FROM login_attempts WHERE email = ? AND attempt_time > ? AND success = 0;",
+            (email_clean, cutoff)
+        )
+        row = cur.fetchone()
+        failed_count = row[0] if row else 0
+
+        if failed_count >= max_attempts:
+            # Find the time of the last failed attempt
+            cur.execute(
+                "SELECT attempt_time FROM login_attempts WHERE email = ? AND success = 0 ORDER BY attempt_time DESC LIMIT 1;",
+                (email_clean,)
+            )
+            row = cur.fetchone()
+            if row:
+                last_attempt = datetime.fromisoformat(row[0])
+                unlock_time = (last_attempt + timedelta(seconds=lockout_seconds)).isoformat()
+                conn.close()
+                return True, unlock_time
+
+        conn.close()
+        return False, None
+    except Exception as e:
+        print(f"[is_account_locked] error: {e}", file=sys.stderr)
+        return False, None
+
+
+def clear_login_attempts(email: str) -> None:
+    """
+    Clear failed login attempts for a user after successful login.
+    """
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute("DELETE FROM login_attempts WHERE email = ? AND success = 0;", (email.strip().lower(),))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"[clear_login_attempts] error: {e}", file=sys.stderr)
 
 # ---------- Connection management ----------
 def get_connection() -> sqlite3.Connection:
@@ -174,10 +246,24 @@ def init_db():
             );
         """)
 
+        # Add assignment columns to reports if missing (admin assignment support)
+        for col_def in [
+            ("assigned_admin_id", "INTEGER"),
+            ("assigned_at", "TEXT"),
+            ("assigned_note", "TEXT")
+        ]:
+            col, _def = col_def
+            if not column_exists(cur, "reports", col):
+                try:
+                    cur.execute(f"ALTER TABLE reports ADD COLUMN {col} {_def};")
+                except Exception:
+                    pass
+
         for col_def in [
             ("is_verified", "INTEGER DEFAULT 0"),
             ("is_active", "INTEGER DEFAULT 1"),
-            ("phone", "TEXT")
+            ("phone", "TEXT"),
+            ("deleted_at", "TEXT")
         ]:
             col, _def = col_def
             if not column_exists(cur, "users", col):
@@ -292,7 +378,13 @@ def init_db():
                 user_id INTEGER,
                 listing_id INTEGER,
                 amount REAL,
+                status TEXT DEFAULT 'completed',
+                payment_method TEXT DEFAULT 'unknown',
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                refunded_amount REAL DEFAULT 0,
+                refund_reason TEXT,
+                notes TEXT,
                 FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE SET NULL,
                 FOREIGN KEY(listing_id) REFERENCES listings(id) ON DELETE SET NULL
             );
@@ -324,6 +416,20 @@ def init_db():
                 FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
                 FOREIGN KEY(listing_id) REFERENCES listings(id) ON DELETE CASCADE,
                 UNIQUE(user_id, listing_id)
+            );
+        """)
+
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS tenants (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                owner_id INTEGER NOT NULL,
+                name TEXT NOT NULL,
+                room_number TEXT NOT NULL,
+                room_type TEXT,
+                status TEXT DEFAULT 'Vacant',
+                avatar TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(owner_id) REFERENCES users(id) ON DELETE CASCADE
             );
         """)
 
@@ -404,12 +510,63 @@ def init_db():
             );
         """)
 
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS system_settings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                settings_id TEXT UNIQUE DEFAULT 'default',
+                settings_json TEXT NOT NULL,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS settings_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                settings_id TEXT NOT NULL,
+                changed_fields TEXT,
+                old_values TEXT,
+                new_values TEXT,
+                changed_by TEXT,
+                changed_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(settings_id) REFERENCES system_settings(settings_id) ON DELETE SET NULL
+            );
+        """)
+
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS login_attempts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                email TEXT NOT NULL,
+                attempt_time TEXT NOT NULL,
+                success INTEGER NOT NULL DEFAULT 0,
+                ip_address TEXT,
+                user_agent TEXT
+            );
+        """)
+
+        # Create index for faster lookup of recent attempts
+        try:
+            cur.execute("""
+                CREATE INDEX IF NOT EXISTS idx_login_attempts_email_time
+                ON login_attempts(email, attempt_time);
+            """)
+        except Exception:
+            pass
+
         conn.commit()
         try:
             from storage import seed_data
             try:
-                seed_data.seed_all_tables(conn)
-                conn.commit()
+                # Allow forcing seeding in development/testing via env var
+                force_seed = os.getenv('CAMPUSKUBO_FORCE_SEED', '').lower() in ('1', 'true', 'yes')
+
+                # Only run demo seeding when the DB appears empty, unless forced.
+                cur.execute("SELECT COUNT(*) as c FROM users")
+                row = cur.fetchone()
+                users_count = int(row['c']) if row and 'c' in row.keys() else (row[0] if row else 0)
+                if force_seed or users_count == 0:
+                    seed_data.seed_all_tables(conn)
+                    conn.commit()
             except Exception:
                 pass
         except Exception:
@@ -422,7 +579,7 @@ def init_db():
         conn.close()
 
 # ---------- User helpers ----------
-def create_user(full_name: str, email: str, password: str, role: str) -> tuple[bool, str]:
+def create_user(full_name: str, email: str, password: str, role: str, is_active: int = 1) -> tuple[bool, str]:
     """
     Create user with hashed password. Returns (success, message).
     Model-compatible signature: full_name, email, password, role.
@@ -458,9 +615,9 @@ def create_user(full_name: str, email: str, password: str, role: str) -> tuple[b
         hashed = hash_password(password)
 
         cur.execute("""
-            INSERT INTO users (email, password, role, full_name, created_at)
-            VALUES (?, ?, ?, ?, ?);
-        """, (email_clean, hashed, role, full_name_clean, _now_iso()))
+            INSERT INTO users (email, password, role, full_name, is_active, created_at)
+            VALUES (?, ?, ?, ?, ?, ?);
+        """, (email_clean, hashed, role, full_name_clean, 1 if is_active else 0, _now_iso()))
 
         conn.commit()
         log_activity(cur.lastrowid, "User Created", f"New {role} user: {email_clean}")
@@ -483,6 +640,15 @@ def validate_user(email: str, password: Optional[str] = None) -> Optional[Dict[s
         return None
 
     email_clean = email.strip().lower()
+
+    # Check if account is locked due to too many failed attempts
+    if password is not None:
+        is_locked, unlock_time = is_account_locked(email_clean)
+        if is_locked:
+            print(f"[validate_user] Account locked for {email_clean} until {unlock_time}", file=sys.stderr)
+            log_activity(None, "Login Blocked", f"Account locked: {email_clean}")
+            return None
+
     conn = get_connection()
     cur = conn.cursor()
     try:
@@ -491,6 +657,8 @@ def validate_user(email: str, password: Optional[str] = None) -> Optional[Dict[s
             cur.execute("SELECT id, role, email, full_name, password FROM users WHERE email = ? AND is_active = 1;", (email_clean,))
             row = cur.fetchone()
             if not row:
+                log_login_attempt(email_clean, False)
+                log_activity(None, "Login Failed", f"User not found: {email_clean}")
                 return None
             stored = row[4]
             try:
@@ -499,7 +667,14 @@ def validate_user(email: str, password: Optional[str] = None) -> Optional[Dict[s
                 ok = False
 
             if not ok:
+                log_login_attempt(email_clean, False)
+                log_activity(None, "Login Failed", f"Invalid password for: {email_clean}")
                 return None
+
+            # Successful login - log it and clear failed attempts
+            log_login_attempt(email_clean, True)
+            clear_login_attempts(email_clean)
+            log_activity(row[0], "Login Success", f"User logged in: {email_clean}")
 
             # If verified and stored is legacy sha256, re-hash with Argon2 and update DB
             if _PH is not None and stored and isinstance(stored, str) and not ('$argon2' in stored):
@@ -597,13 +772,43 @@ def update_user_full_name(user_id: int, full_name: str) -> bool:
     finally:
         conn.close()
 
-def update_user_password(user_id: int, new_password: str) -> bool:
+def verify_current_password(user_id: int, current_password: str) -> bool:
+    """
+    Verify that the current password matches the stored password for a user.
+    Used before allowing password changes.
+    """
+    if not current_password or user_id <= 0:
+        return False
+
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT password FROM users WHERE id = ?;", (user_id,))
+        row = cur.fetchone()
+        if not row:
+            return False
+        stored_hash = row[0]
+        return verify_password(stored_hash, current_password)
+    except Exception as e:
+        print(f"[verify_current_password] error for user {user_id}: {e}", file=sys.stderr)
+        return False
+    finally:
+        conn.close()
+
+def update_user_password(user_id: int, new_password: str, current_password: Optional[str] = None) -> bool:
     """
     Update user password with hash only (no plaintext storage).
+    If current_password is provided, it will be verified before updating.
     """
     if not new_password or user_id <= 0:
         print(f"[update_user_password] Invalid input: user_id={user_id}", file=sys.stderr)
         return False
+
+    # Verify current password if provided (for user-initiated changes)
+    if current_password is not None:
+        if not verify_current_password(user_id, current_password):
+            log_activity(user_id, "Password Change Failed", "Current password verification failed")
+            return False
 
     conn = get_connection()
     cur = conn.cursor()
@@ -675,9 +880,156 @@ def update_user_info(user_id: int, full_name: str, email: str, phone: Optional[s
     finally:
         conn.close()
 
-def delete_user(user_id: int) -> bool:
+
+def _ensure_address_table(conn):
+    cur = conn.cursor()
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS user_addresses (
+            user_id INTEGER PRIMARY KEY,
+            house TEXT,
+            street TEXT,
+            barangay TEXT,
+            city TEXT
+        );
+        """
+    )
+    conn.commit()
+
+
+def get_user_address(user_id: int) -> Optional[Dict[str, Any]]:
+    """Return address record for a user or None."""
+    if not user_id:
+        return None
+    conn = get_connection()
+    try:
+        _ensure_address_table(conn)
+        cur = conn.cursor()
+        cur.execute("SELECT house, street, barangay, city FROM user_addresses WHERE user_id = ?;", (user_id,))
+        row = cur.fetchone()
+        if not row:
+            return None
+        return {
+            "house": row[0],
+            "street": row[1],
+            "barangay": row[2],
+            "city": row[3],
+        }
+    finally:
+        conn.close()
+
+
+def update_user_address(user_id: int, house: str, street: str, barangay: str, city: str) -> bool:
+    """Insert or update the address for a given user_id."""
+    if not user_id:
+        return False
+    conn = get_connection()
+    try:
+        _ensure_address_table(conn)
+        cur = conn.cursor()
+        cur.execute(
+            "INSERT INTO user_addresses(user_id, house, street, barangay, city) VALUES (?, ?, ?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET house=excluded.house, street=excluded.street, barangay=excluded.barangay, city=excluded.city;",
+            (user_id, house or '', street or '', barangay or '', city or '')
+        )
+        conn.commit()
+        return cur.rowcount >= 0
+    except Exception as e:
+        conn.rollback()
+        print(f"[update_user_address] error for user {user_id}: {e}", file=sys.stderr)
+        return False
+    finally:
+        conn.close()
+
+
+def _ensure_users_has_avatar_column(conn):
+    cur = conn.cursor()
+    try:
+        cur.execute("PRAGMA table_info(users);")
+        cols = [r[1] for r in cur.fetchall()]
+        if 'avatar' not in cols:
+            cur.execute("ALTER TABLE users ADD COLUMN avatar TEXT;")
+            conn.commit()
+    except Exception:
+        # Best-effort; ignore failures
+        conn.rollback()
+
+
+def update_user_avatar(user_id: int, avatar_path: str) -> bool:
+    """Store avatar path in `users.avatar` column (adds column if missing)."""
+    if not user_id:
+        return False
+    conn = get_connection()
+    try:
+        _ensure_users_has_avatar_column(conn)
+        cur = conn.cursor()
+        cur.execute("UPDATE users SET avatar = ? WHERE id = ?;", (avatar_path or '', user_id))
+        conn.commit()
+        return cur.rowcount > 0
+    except Exception as e:
+        conn.rollback()
+        print(f"[update_user_avatar] error for user {user_id}: {e}", file=sys.stderr)
+        return False
+    finally:
+        conn.close()
+
+
+def update_user_account(user_id: int, full_name: str, email: str, role: str, is_active: int = 1, phone: Optional[str] = None) -> bool:
+    """
+    Update user account details including role and active status.
+    """
+    if not full_name or not email or not role:
+        print(f"[update_user_account] Missing required fields for user {user_id}", file=sys.stderr)
+        return False
+
+    if user_id <= 0:
+        print(f"[update_user_account] Invalid user_id: {user_id}", file=sys.stderr)
+        return False
+
+    full_name = full_name.strip()
+    email = email.strip().lower()
+    role = role.strip().lower()
+    phone = phone.strip() if phone and phone.strip() else None
+
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT email FROM users WHERE id = ?;", (user_id,))
+        user = cur.fetchone()
+        if not user:
+            print(f"[update_user_account] User not found: {user_id}", file=sys.stderr)
+            return False
+
+        current_email = user[0].lower()
+        if email != current_email:
+            cur.execute("SELECT id FROM users WHERE email = ? AND id != ?;", (email, user_id))
+            if cur.fetchone():
+                print(f"[update_user_account] Email already in use: {email}", file=sys.stderr)
+                return False
+
+        cur.execute(
+            "UPDATE users SET full_name = ?, email = ?, phone = ?, role = ?, is_active = ? WHERE id = ?;",
+            (full_name, email, phone, role, 1 if is_active else 0, user_id)
+        )
+        conn.commit()
+
+        if cur.rowcount > 0:
+            log_activity(user_id, "Profile Updated", "Updated account metadata")
+            return True
+
+        print(f"[update_user_account] Nothing to update for user {user_id}", file=sys.stderr)
+        return False
+    except Exception as e:
+        conn.rollback()
+        print(f"[update_user_account] error for user {user_id}: {e}", file=sys.stderr)
+        return False
+    finally:
+        conn.close()
+
+def delete_user(user_id: int, soft_delete: bool = True) -> bool:
     """
     Delete user by ID with validation.
+    Uses soft delete by default (sets deleted_at timestamp).
+    Set soft_delete=False for permanent deletion.
     """
     if user_id <= 0:
         print(f"[delete_user] Invalid user_id: {user_id}", file=sys.stderr)
@@ -693,9 +1045,17 @@ def delete_user(user_id: int) -> bool:
             print(f"[delete_user] User not found: {user_id}", file=sys.stderr)
             return False
 
-        cur.execute("DELETE FROM users WHERE id = ?;", (user_id,))
+        if soft_delete:
+            # Soft delete: mark as deleted with timestamp
+            cur.execute("UPDATE users SET deleted_at = ?, is_active = 0 WHERE id = ?;", (_now_iso(), user_id))
+            action_msg = f"Soft deleted {user['role']} user: {user['email']}"
+        else:
+            # Hard delete: permanently remove
+            cur.execute("DELETE FROM users WHERE id = ?;", (user_id,))
+            action_msg = f"Permanently deleted {user['role']} user: {user['email']}"
+
         conn.commit()
-        log_activity(None, "User Deleted", f"Deleted {user['role']} user: {user['email']}")
+        log_activity(None, "User Deleted", action_msg)
         return True
     except Exception as e:
         conn.rollback()
@@ -704,9 +1064,11 @@ def delete_user(user_id: int) -> bool:
     finally:
         conn.close()
 
-def delete_user_by_email(email: str) -> bool:
+def delete_user_by_email(email: str, soft_delete: bool = True) -> bool:
     """
     Delete user by email with validation.
+    Uses soft delete by default (sets deleted_at timestamp).
+    Set soft_delete=False for permanent deletion.
     """
     if not email or not email.strip():
         print("[delete_user_by_email] Invalid email", file=sys.stderr)
@@ -722,9 +1084,17 @@ def delete_user_by_email(email: str) -> bool:
             print(f"[delete_user_by_email] User not found: {email_clean}", file=sys.stderr)
             return False
 
-        cur.execute("DELETE FROM users WHERE email = ?;", (email_clean,))
+        if soft_delete:
+            # Soft delete: mark as deleted with timestamp
+            cur.execute("UPDATE users SET deleted_at = ?, is_active = 0 WHERE id = ?;", (_now_iso(), user['id']))
+            action_msg = f"Soft deleted {user['role']} user: {email_clean}"
+        else:
+            # Hard delete: permanently remove
+            cur.execute("DELETE FROM users WHERE email = ?;", (email_clean,))
+            action_msg = f"Permanently deleted {user['role']} user: {email_clean}"
+
         conn.commit()
-        log_activity(None, "User Deleted", f"Deleted {user['role']} user: {email_clean}")
+        log_activity(None, "User Deleted", action_msg)
         return True
     except Exception as e:
         conn.rollback()
@@ -1599,7 +1969,7 @@ def property_data():
         for email in pm_emails:
             cur.execute("SELECT id FROM users WHERE email = ?", (email,))
             if not cur.fetchone():
-                hashed = hash_password("PmPassword123!")  
+                hashed = hash_password("PmPassword123!")
                 cur.execute("""
                     INSERT INTO users (email, password, role, full_name, created_at)
                     VALUES (?, ?, ?, ?, ?)
@@ -1958,17 +2328,17 @@ def property_data():
         conn.close()
 
 
-def get_properties(search_query: str = "", filters: dict = None) -> List[Dict]:
+def get_properties(search_query: str = "", filters: Optional[Dict[str, Any]] = None) -> List[Dict]:
     conn = get_connection()
     cur = conn.cursor()
-    
+
     try:
         query = """
             SELECT id, pm_id, name, address, location, price, description,
                    room_type, total_rooms, available_rooms, available_room_types,
                    amenities, availability_status, image_url, image_url_2,
                    image_url_3, image_url_4, status, created_at
-            FROM listings 
+            FROM listings
             WHERE status = 'approved'
         """
         params = []
@@ -2000,13 +2370,13 @@ def get_properties(search_query: str = "", filters: dict = None) -> List[Dict]:
                 params.append(f'%"{rt}"%')
             query += ")"
 
-        # ── Amenities (WiFi, Air Conditioning, etc.) 
+        # ── Amenities (WiFi, Air Conditioning, etc.)
         if amenities := filters.get("amenities"):
             if isinstance(amenities, str):
                 amenities = [amenities]
             for amenity in amenities:
                 query += " AND amenities LIKE ?"
-                params.append(f'%"{amenity}"%')   
+                params.append(f'%"{amenity}"%')
 
         # ── Availability status ─────────────────────
         if availability := filters.get("availability"):
@@ -2053,24 +2423,24 @@ def get_property_by_id(property_id: int):
     """
     conn = get_connection()
     cur = conn.cursor()
-    
+
     try:
         query = """
-            SELECT 
+            SELECT
                 id, pm_id, name, address, location, price, description,
                 room_type, total_rooms, available_rooms, available_room_types,
                 amenities, availability_status, image_url, image_url_2,
                 image_url_3, image_url_4, status, created_at, updated_at
-            FROM listings 
+            FROM listings
             WHERE id = ? AND status = 'approved'
         """
-        
+
         cur.execute(query, (property_id,))
         prop = cur.fetchone()
-        
+
         if not prop:
             return None
-        
+
         return {
             "id": prop["id"],
             "pm_id": prop["pm_id"],
@@ -2093,7 +2463,7 @@ def get_property_by_id(property_id: int):
             "created_at": prop["created_at"],
             "updated_at": prop["updated_at"]
         }
-        
+
     except Exception as e:
         print(f"[get_property_by_id] ❌ Error: {e}", file=sys.stderr)
         return None
@@ -2165,6 +2535,69 @@ def get_saved_listings(user_id: int) -> List[Dict[str, Any]]:
         )
         rows = cur.fetchall()
         return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def is_property_saved(user_id: int, listing_id: int) -> bool:
+    """Check if a listing is already saved by the user."""
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            "SELECT 1 FROM saved_listings WHERE user_id = ? AND listing_id = ? LIMIT 1;",
+            (user_id, listing_id)
+        )
+        return cur.fetchone() is not None
+    except Exception as e:
+        print(f"[is_property_saved] error: {e}", file=sys.stderr)
+        return False
+    finally:
+        conn.close()
+
+
+def save_property(user_id: int, listing_id: int) -> bool:
+    """Persist a saved listing for the user."""
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            "SELECT saved_id FROM saved_listings WHERE user_id = ? AND listing_id = ?;",
+            (user_id, listing_id)
+        )
+        if cur.fetchone():
+            return True
+
+        now = _now_iso()
+        cur.execute(
+            "INSERT INTO saved_listings (user_id, listing_id, saved_at) VALUES (?, ?, ?);",
+            (user_id, listing_id, now)
+        )
+        conn.commit()
+        return True
+    except Exception as e:
+        conn.rollback()
+        print(f"[save_property] error: {e}", file=sys.stderr)
+        return False
+    finally:
+        conn.close()
+
+
+def unsave_property(user_id: int, listing_id: int) -> bool:
+    """Remove a saved listing for the user."""
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            "DELETE FROM saved_listings WHERE user_id = ? AND listing_id = ?;",
+            (user_id, listing_id)
+        )
+        conn.commit()
+        return cur.rowcount > 0
+    except Exception as e:
+        conn.rollback()
+        print(f"[unsave_property] error: {e}", file=sys.stderr)
+        return False
     finally:
         conn.close()
 
@@ -2359,6 +2792,168 @@ def get_payment_transactions(user_id: int) -> List[Dict[str, Any]]:
         conn.close()
 
 
+# =====================================================
+# ADMIN PAYMENT MANAGEMENT FUNCTIONS
+# =====================================================
+
+def get_all_payments_admin(status: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Get all payments (optionally filtered by status) with user and listing info."""
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        if status:
+            cur.execute("""
+                SELECT p.id, p.user_id, u.email as user_email, u.full_name,
+                       p.listing_id, l.address as listing_address,
+                       p.amount, p.status, p.payment_method, p.refunded_amount,
+                       p.refund_reason, p.notes, p.created_at, p.updated_at
+                FROM payments p
+                LEFT JOIN users u ON p.user_id = u.id
+                LEFT JOIN listings l ON p.listing_id = l.id
+                WHERE p.status = ?
+                ORDER BY p.created_at DESC
+            """, (status,))
+        else:
+            cur.execute("""
+                SELECT p.id, p.user_id, u.email as user_email, u.full_name,
+                       p.listing_id, l.address as listing_address,
+                       p.amount, p.status, p.payment_method, p.refunded_amount,
+                       p.refund_reason, p.notes, p.created_at, p.updated_at
+                FROM payments p
+                LEFT JOIN users u ON p.user_id = u.id
+                LEFT JOIN listings l ON p.listing_id = l.id
+                ORDER BY p.created_at DESC
+            """)
+        rows = cur.fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def process_payment_refund(payment_id: int, refund_amount: float, refund_reason: str) -> Tuple[bool, str]:
+    """Process a partial or full refund for a payment."""
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        # Get original payment
+        cur.execute("SELECT id, amount, refunded_amount FROM payments WHERE id = ?", (payment_id,))
+        payment = cur.fetchone()
+
+        if not payment:
+            return False, "Payment not found"
+
+        original_amount = float(payment['amount'])
+        already_refunded = float(payment['refunded_amount'])
+        remaining = original_amount - already_refunded
+
+        if refund_amount > remaining:
+            return False, f"Refund amount (₱{refund_amount:,.2f}) exceeds remaining balance (₱{remaining:,.2f})"
+
+        if refund_amount <= 0:
+            return False, "Refund amount must be greater than 0"
+
+        # Update payment with refund info
+        new_refunded_amount = already_refunded + refund_amount
+        new_status = 'refunded' if new_refunded_amount >= original_amount else 'completed'
+
+        cur.execute("""
+            UPDATE payments
+            SET status = ?, refunded_amount = ?, refund_reason = ?, updated_at = ?
+            WHERE id = ?
+        """, (new_status, new_refunded_amount, refund_reason, _now_iso(), payment_id))
+
+        conn.commit()
+        return True, f"Refund of ₱{refund_amount:,.2f} processed successfully"
+    except Exception as e:
+        conn.rollback()
+        return False, f"Error processing refund: {str(e)}"
+    finally:
+        conn.close()
+
+
+def update_payment_status(payment_id: int, new_status: str, notes: Optional[str] = None) -> Tuple[bool, str]:
+    """Update payment status (completed, pending, failed, refunded)."""
+    valid_statuses = ['completed', 'pending', 'failed', 'refunded']
+    if new_status not in valid_statuses:
+        return False, f"Invalid status. Must be one of: {', '.join(valid_statuses)}"
+
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            UPDATE payments
+            SET status = ?, notes = ?, updated_at = ?
+            WHERE id = ?
+        """, (new_status, notes, _now_iso(), payment_id))
+
+        if cur.rowcount == 0:
+            return False, "Payment not found"
+
+        conn.commit()
+        return True, f"Payment status updated to '{new_status}'"
+    except Exception as e:
+        conn.rollback()
+        return False, f"Error updating payment: {str(e)}"
+    finally:
+        conn.close()
+
+
+def get_payment_statistics() -> Dict[str, Any]:
+    """Get payment statistics (total revenue, refunds, average transaction, etc.)."""
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        # Total revenue (completed and partially refunded payments minus refunds)
+        cur.execute("""
+            SELECT
+                COUNT(*) as total_transactions,
+                SUM(amount) as total_revenue,
+                SUM(refunded_amount) as total_refunds,
+                SUM(amount - refunded_amount) as net_revenue,
+                AVG(amount) as avg_transaction,
+                MIN(amount) as min_transaction,
+                MAX(amount) as max_transaction
+            FROM payments
+            WHERE status IN ('completed', 'refunded')
+        """)
+        row = cur.fetchone()
+
+        # Payment method breakdown
+        cur.execute("""
+            SELECT payment_method, COUNT(*) as count, SUM(amount) as total
+            FROM payments
+            WHERE status IN ('completed', 'refunded')
+            GROUP BY payment_method
+            ORDER BY total DESC
+        """)
+        method_rows = cur.fetchall()
+        payment_methods = {dict(r)['payment_method']: dict(r) for r in method_rows}
+
+        # Status breakdown
+        cur.execute("""
+            SELECT status, COUNT(*) as count, SUM(amount) as total
+            FROM payments
+            GROUP BY status
+            ORDER BY count DESC
+        """)
+        status_rows = cur.fetchall()
+        statuses = {dict(r)['status']: dict(r) for r in status_rows}
+
+        return {
+            'total_transactions': row['total_transactions'] or 0,
+            'total_revenue': float(row['total_revenue'] or 0),
+            'total_refunds': float(row['total_refunds'] or 0),
+            'net_revenue': float(row['net_revenue'] or 0),
+            'avg_transaction': float(row['avg_transaction'] or 0),
+            'min_transaction': float(row['min_transaction'] or 0),
+            'max_transaction': float(row['max_transaction'] or 0),
+            'payment_methods': payment_methods,
+            'statuses': statuses
+        }
+    finally:
+        conn.close()
+
+
 def add_review(listing_id: int, user_id: int, rating: int, comment: str) -> bool:
     conn = get_connection()
     cur = conn.cursor()
@@ -2416,6 +3011,241 @@ def get_chat_history(user_id: int) -> List[Dict[str, Any]]:
     try:
         cur.execute("SELECT * FROM messages WHERE sender_id = ? OR receiver_id = ? ORDER BY created_at ASC;", (user_id, user_id))
         return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+# ---------- SYSTEM SETTINGS ----------
+
+def get_settings(settings_id: str = 'default') -> Optional[Dict[str, Any]]:
+    """Get system settings from database"""
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """SELECT settings_json FROM system_settings WHERE settings_id = ?;""",
+            (settings_id,)
+        )
+        result = cur.fetchone()
+        if result:
+            import json
+            return json.loads(result['settings_json'])
+        return None
+    except Exception as e:
+        print(f"[get_settings] error: {e}", file=sys.stderr)
+        return None
+    finally:
+        conn.close()
+
+
+def save_settings(settings_dict: Dict[str, Any], settings_id: str = 'default', changed_by: str = 'system') -> Tuple[bool, str]:
+    """Save system settings to database"""
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        import json
+
+        now = _now_iso()
+        settings_json = json.dumps(settings_dict)
+
+        # Check if settings exist
+        cur.execute("SELECT id FROM system_settings WHERE settings_id = ?;", (settings_id,))
+        existing = cur.fetchone()
+
+        if existing:
+            # Update existing
+            cur.execute(
+                """UPDATE system_settings SET settings_json = ?, updated_at = ? WHERE settings_id = ?;""",
+                (settings_json, now, settings_id)
+            )
+            # Record change in history
+            cur.execute(
+                """INSERT INTO settings_history (settings_id, changed_fields, changed_by, changed_at)
+                   VALUES (?, 'full_update', ?, ?);""",
+                (settings_id, changed_by, now)
+            )
+        else:
+            # Insert new
+            cur.execute(
+                """INSERT INTO system_settings (settings_id, settings_json, created_at, updated_at)
+                   VALUES (?, ?, ?, ?);""",
+                (settings_id, settings_json, now, now)
+            )
+            cur.execute(
+                """INSERT INTO settings_history (settings_id, changed_fields, changed_by, changed_at)
+                   VALUES (?, 'initial_creation', ?, ?);""",
+                (settings_id, changed_by, now)
+            )
+
+        conn.commit()
+        return True, "Settings saved successfully"
+    except Exception as e:
+        conn.rollback()
+        print(f"[save_settings] error: {e}", file=sys.stderr)
+        return False, f"Error saving settings: {str(e)}"
+    finally:
+        conn.close()
+
+
+def reset_settings(settings_id: str = 'default') -> Tuple[bool, str]:
+    """Reset settings to empty state"""
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        now = _now_iso()
+        cur.execute(
+            """DELETE FROM system_settings WHERE settings_id = ?;""",
+            (settings_id,)
+        )
+        cur.execute(
+            """INSERT INTO settings_history (settings_id, changed_fields, changed_by, changed_at)
+               VALUES (?, 'reset_to_defaults', 'system', ?);""",
+            (settings_id, now)
+        )
+        conn.commit()
+        return True, "Settings reset successfully"
+    except Exception as e:
+        conn.rollback()
+        print(f"[reset_settings] error: {e}", file=sys.stderr)
+        return False, f"Error resetting settings: {str(e)}"
+    finally:
+        conn.close()
+
+
+def get_all_settings_history(settings_id: str = 'default', limit: int = 10) -> List[Dict[str, Any]]:
+    """Get settings change history"""
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """SELECT id, settings_id, changed_fields, changed_by, changed_at
+               FROM settings_history
+               WHERE settings_id = ?
+               ORDER BY changed_at DESC
+               LIMIT ?;""",
+            (settings_id, limit)
+        )
+        return [dict(r) for r in cur.fetchall()]
+    except Exception as e:
+        print(f"[get_all_settings_history] error: {e}", file=sys.stderr)
+        return []
+    finally:
+        conn.close()
+
+
+def update_setting_field(settings_id: str, field_path: str, value: Any, changed_by: str = 'system') -> Tuple[bool, str]:
+    """Update a single settings field and record change"""
+    try:
+        import json
+
+        # Get current settings
+        current = get_settings(settings_id)
+        if not current:
+            return False, "Settings not found"
+
+        # Update field (simple case - no nested paths for now)
+        # Full implementation would handle dot notation paths
+
+        # Save updated settings
+        return save_settings(current, settings_id, changed_by)
+    except Exception as e:
+        return False, f"Error updating setting: {str(e)}"
+
+
+# ========== TENANT MANAGEMENT ==========
+
+def create_tenant(owner_id: int, name: str, room_number: str, room_type: str, status: str, avatar: str) -> Optional[int]:
+    """Create a new tenant record"""
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """INSERT INTO tenants (owner_id, name, room_number, room_type, status, avatar, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?);""",
+            (owner_id, name, room_number, room_type, status, avatar, _now_iso())
+        )
+        conn.commit()
+        return cur.lastrowid
+    except Exception as e:
+        print(f"[create_tenant] error: {e}", file=sys.stderr)
+        conn.rollback()
+        return None
+    finally:
+        conn.close()
+
+
+def get_tenants(owner_id: int) -> List[Dict[str, Any]]:
+    """Get all tenants for a property owner"""
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """SELECT id, owner_id, name, room_number, room_type, status, avatar, created_at
+               FROM tenants
+               WHERE owner_id = ?
+               ORDER BY room_number;""",
+            (owner_id,)
+        )
+        return [dict(r) for r in cur.fetchall()]
+    except Exception as e:
+        print(f"[get_tenants] error: {e}", file=sys.stderr)
+        return []
+    finally:
+        conn.close()
+
+
+def update_tenant(tenant_id: int, name: Optional[str] = None, room_number: Optional[str] = None,
+                  room_type: Optional[str] = None, status: Optional[str] = None) -> bool:
+    """Update tenant information"""
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        # Build update query dynamically based on provided parameters
+        updates = []
+        params = []
+
+        if name is not None:
+            updates.append("name = ?")
+            params.append(name)
+        if room_number is not None:
+            updates.append("room_number = ?")
+            params.append(room_number)
+        if room_type is not None:
+            updates.append("room_type = ?")
+            params.append(room_type)
+        if status is not None:
+            updates.append("status = ?")
+            params.append(status)
+
+        if not updates:
+            return True  # Nothing to update
+
+        params.append(tenant_id)
+        query = f"UPDATE tenants SET {', '.join(updates)} WHERE id = ?;"
+
+        cur.execute(query, params)
+        conn.commit()
+        return cur.rowcount > 0
+    except Exception as e:
+        print(f"[update_tenant] error: {e}", file=sys.stderr)
+        conn.rollback()
+        return False
+    finally:
+        conn.close()
+
+
+def delete_tenant(tenant_id: int) -> bool:
+    """Delete a tenant record"""
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("DELETE FROM tenants WHERE id = ?;", (tenant_id,))
+        conn.commit()
+        return cur.rowcount > 0
+    except Exception as e:
+        print(f"[delete_tenant] error: {e}", file=sys.stderr)
+        conn.rollback()
+        return False
     finally:
         conn.close()
 

@@ -22,6 +22,8 @@ class User:
     full_name: Optional[str]
     role: UserRole
     created_at: Optional[datetime] = None
+    phone: Optional[str] = None
+    is_active: bool = True
 
     def to_dict(self):
         """Convert to dictionary"""
@@ -73,12 +75,27 @@ class User:
         except Exception:
             created_at_val = None
 
+        phone_val = None
+        try:
+            phone_val = row['phone']
+        except Exception:
+            phone_val = row.get('phone') if hasattr(row, 'get') else None
+
+        is_active_val = True
+        try:
+            if 'is_active' in row.keys():
+                is_active_val = bool(row['is_active'])
+        except Exception:
+            is_active_val = True
+
         return cls(
             id=row['id'],
             email=row['email'],
             full_name=full_name_val if full_name_val is not None else None,
             role=role_enum,
-            created_at=created_at_val
+            created_at=created_at_val,
+            phone=phone_val,
+            is_active=is_active_val
         )
 
     def is_tenant(self) -> bool:

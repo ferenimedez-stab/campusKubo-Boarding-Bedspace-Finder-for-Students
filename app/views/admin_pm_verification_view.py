@@ -5,6 +5,7 @@ from components.admin_utils import format_id, format_name, format_datetime
 from components.table_card import TableCard
 from state.session_state import SessionState
 from typing import Optional, Any
+from services.refresh_service import register as _register_refresh
 
 
 class AdminPMVerificationView:
@@ -17,6 +18,18 @@ class AdminPMVerificationView:
         self.page_index = 0
         self.page_size = 8
         self.table_container = ft.Container()
+        try:
+            _register_refresh(self._on_global_refresh)
+        except Exception:
+            pass
+
+    def _on_global_refresh(self):
+        # Recompute pending list and rebuild view
+        try:
+            # keep the same page index when refreshing
+            self.page.go('/admin_pm_verification')
+        except Exception:
+            pass
 
     def build(self):
         if not self.session.require_auth():
@@ -30,6 +43,10 @@ class AdminPMVerificationView:
 
         start = self.page_index * self.page_size
         end = start + self.page_size
+        # Clamp page_index before slicing so empty tabs don't corrupt pagination
+        total_pages = max(1, (total + self.page_size - 1) // self.page_size)
+        if self.page_index >= total_pages:
+            self.page_index = max(0, total_pages - 1)
         page_items = pending[start:end]
 
         rows = []
@@ -53,6 +70,19 @@ class AdminPMVerificationView:
                 ])
             )
 
+        if not page_items:
+            self.table_container.content = ft.Container(
+                content=ft.Column(spacing=8, horizontal_alignment=ft.CrossAxisAlignment.CENTER, controls=[
+                    ft.Icon(ft.Icons.INBOX, size=48, color=ft.Colors.GREY),
+                    ft.Text("No Data Yet", size=14, color=ft.Colors.GREY),
+                    ft.Text("There are no pending applications.", size=12, color=ft.Colors.GREY_600),
+                ]),
+                padding=ft.padding.symmetric(vertical=24, horizontal=8),
+                alignment=ft.alignment.center,
+                expand=True,
+            )
+            return
+
         table = ft.DataTable(
             columns=[
                 ft.DataColumn(ft.Text("ID")),
@@ -62,19 +92,15 @@ class AdminPMVerificationView:
                 ft.DataColumn(ft.Text("Actions")),
             ],
             rows=rows,
+            column_spacing=14,
+            expand=True,
             border=ft.border.all(1, "#E0E0E0"),
-            heading_row_color="#F5F5F5",
-            column_spacing=12,
-            expand=True
+            heading_row_color="#F9F9F9",
+            heading_row_height=48,
         )
 
-        tc = TableCard(
-            title="PM Applications",
-            table=table,
-            width=1200,
-            expand=True
-        )
-        self.table_container.content = tc.build()
+        # Display DataTable directly without TableCard for a minimal appearance
+        self.table_container.content = ft.Container(content=table, expand=True, padding=ft.padding.only(top=6, bottom=6))
 
         # pagination controls - compute total pages and clamp index
         total_pages = max(1, (total + self.page_size - 1) // self.page_size)
@@ -173,6 +199,13 @@ class AdminPMVerificationView:
                 self.page.open(sb)
             except Exception:
                 pass
+
+        # Notify global refresh service
+        try:
+            from services.refresh_service import notify as _notify
+            _notify()
+        except Exception:
+            pass
 
         self.page.update()
         # refresh view

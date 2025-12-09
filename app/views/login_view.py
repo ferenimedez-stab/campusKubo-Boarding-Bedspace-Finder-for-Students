@@ -1,6 +1,6 @@
 # views/login_view.py
 """
-Login view 
+Login view
 """
 import flet as ft
 from storage.db import validate_user
@@ -22,7 +22,7 @@ class LoginView:
         self.page.vertical_alignment = ft.MainAxisAlignment.CENTER
 
         email = ft.TextField(
-            label="Email Address", 
+            label="Email Address",
             width=330,
             bgcolor=self.colors["background"],
             border_color=self.colors["border"],
@@ -30,9 +30,9 @@ class LoginView:
             color=self.colors["text_dark"]
         )
         password = ft.TextField(
-            label="Password", 
-            width=330, 
-            password=True, 
+            label="Password",
+            width=330,
+            password=True,
             can_reveal_password=True,
             bgcolor=self.colors["background"],
             border_color=self.colors["border"],
@@ -41,19 +41,110 @@ class LoginView:
         )
         msg = ft.Text("", size=16, color=self.colors["error"], weight=ft.FontWeight.BOLD)
 
+        # Countdown text shown during cooldown (live-updated)
+        countdown_text = ft.Text("", size=14, color=self.colors["text_light"])
+
+        # Define login button (will set on_click after do_login is defined)
+        login_btn = ft.ElevatedButton(
+            "Log In",
+            width=330,
+            bgcolor=self.colors["primary"],
+            color=self.colors["card_bg"]
+        )
+
         def do_login(e):
             email_val = email.value or ""
             password_val = password.value or ""
             print(f"Login attempt: email={email_val}, password provided={bool(password_val)}")
+
+            # Basic client-side email format validation: require '@' and '.'
+            if not email_val or ('@' not in email_val) or ('.' not in email_val):
+                msg.value = "Please enter a valid email address (must contain @ and .)"
+                self.page.update()
+                return
+
+            # Import lockout check
+            from storage.db import is_account_locked
+
+            # Check if account is locked
+            is_locked, unlock_time = is_account_locked(email_val)
+            if is_locked and unlock_time:
+                from datetime import datetime
+                try:
+                    unlock_dt = datetime.fromisoformat(unlock_time)
+                    time_remaining = int((unlock_dt - datetime.utcnow()).total_seconds())
+                    msg.value = f"Account temporarily locked due to multiple failed login attempts. Try again in {time_remaining} seconds."
+                    #countdown_text.value = f"{time_remaining}s"
+                    # visually grey out the button
+                    login_btn.disabled = True
+                    login_btn.bgcolor = self.colors.get("border", "#cccccc")
+
+                    # start a background countdown thread if not already running
+                    try:
+                        import threading, time as _time
+
+                        existing = getattr(self.page, '_login_cooldown_thread', None)
+                        if not (existing and getattr(existing, 'is_alive', lambda: False)()):
+                            # control flag to stop the thread early if needed
+                            setattr(self.page, '_login_cooldown_stop', False)
+
+                            def _countdown_loop():
+                                while True:
+                                    if getattr(self.page, '_login_cooldown_stop', False):
+                                        break
+                                    remaining = int((unlock_dt - datetime.utcnow()).total_seconds())
+                                    if remaining <= 0:
+                                        # cooldown finished
+                                        login_btn.disabled = False
+                                        login_btn.bgcolor = self.colors.get("primary", "#0078FF")
+                                        msg.value = ""
+                                        countdown_text.value = ""
+                                        try:
+                                            self.page.update()
+                                        except Exception:
+                                            pass
+                                        break
+                                    msg.value = f"Account temporarily locked due to multiple failed login attempts. Try again in {remaining} seconds."
+                                    #countdown_text.value = f"{remaining}s"
+                                    try:
+                                        self.page.update()
+                                    except Exception:
+                                        pass
+                                    _time.sleep(1)
+
+                            th = threading.Thread(target=_countdown_loop, daemon=True)
+                            setattr(self.page, '_login_cooldown_thread', th)
+                            th.start()
+                    except Exception:
+                        # If threading fails, just show static message
+                        pass
+                except:
+                    msg.value = "Account temporarily locked. Please try again later."
+                    login_btn.disabled = True
+                    login_btn.bgcolor = self.colors.get("border", "#cccccc")
+                self.page.update()
+                return
+
+            # Re-enable login button if it was disabled and stop any cooldown thread
+            login_btn.disabled = False
+            login_btn.bgcolor = self.colors.get("primary", "#0078FF")
+            try:
+                setattr(self.page, '_login_cooldown_stop', True)
+            except Exception:
+                pass
+            countdown_text.value = ""
+
             user = validate_user(email_val, password_val)
             print(f"User validated: {user}")
             if user:
-                # Set all session data properly
+                # Set all session data properly (including last_activity for timeout tracking)
+                from datetime import datetime
                 self.page.session.set("user_id", user.get('id'))
                 self.page.session.set("email", user.get('email'))
                 self.page.session.set("role", user.get('role'))
                 self.page.session.set("full_name", user.get('full_name', ''))
                 self.page.session.set("is_logged_in", True)
+                self.page.session.set("last_activity", datetime.utcnow().isoformat())
 
                 user_role = user.get('role')
                 print(f"Login successful - ID: {user.get('id')}, Role: {user_role}, Email: {user.get('email')}")
@@ -81,14 +172,14 @@ class LoginView:
                 border_color=self.colors["border"],
                 color=self.colors["text_dark"]
             )
-            
+
             def send_reset_link(e):
                 if reset_email.value:
                     # TODO: Implement actual password reset logic here
                     # This would typically send an email with a reset link
                     dialog.open = False
                     self.page.update()
-                    
+
                     success_snack = ft.SnackBar(
                         ft.Text(
                             f"Password reset link sent to {reset_email.value}",
@@ -103,14 +194,14 @@ class LoginView:
                     error_text.value = "Please enter your email address"
                     error_text.visible = True
                     self.page.update()
-            
+
             error_text = ft.Text(
                 "",
                 size=12,
                 color=self.colors["error"],
                 visible=False
             )
-            
+
             dialog = ft.AlertDialog(
                 title=ft.Text(
                     "🔑 Reset Password",
@@ -149,6 +240,9 @@ class LoginView:
             self.page.overlay.append(dialog)
             dialog.open = True
             self.page.update()
+
+        # Set the on_click handler for login button now that do_login is defined
+        login_btn.on_click = do_login
 
         return ft.View("/login",
             vertical_alignment=ft.MainAxisAlignment.CENTER,
@@ -204,13 +298,8 @@ class LoginView:
                                 ]
                             ),
                             msg,
-                            ft.ElevatedButton(
-                                "Log In",
-                                width=330,
-                                on_click=do_login,
-                                bgcolor=self.colors["primary"],
-                                color=self.colors["card_bg"]
-                            ),
+                            countdown_text,
+                            login_btn,
                             ft.TextButton(
                                 "Don't have an account? Sign Up",
                                 on_click=lambda _: self.page.go("/signup"),
@@ -231,7 +320,7 @@ class LoginView:
                 )
             ]
         )
-    
+
     def _close_dialog(self, dialog):
         dialog.open = False
         self.page.update()

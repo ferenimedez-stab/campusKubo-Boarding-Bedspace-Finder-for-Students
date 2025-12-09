@@ -1,10 +1,11 @@
 """
-Home/Landing page view 
+Home/Landing page view
 """
 import flet as ft
 from typing import Any
 from storage.db import get_properties
 from components.signup_banner import SignupBanner
+from components.listing_card import create_home_listing_card
 from config.colors import COLORS
 
 class HomeView:
@@ -252,7 +253,7 @@ class HomeView:
             spacing=10,
             controls=[
                 ft.OutlinedButton(
-                    "💰 Price Range", 
+                    "💰 Price Range",
                     on_click=show_price_filter,
                     style=ft.ButtonStyle(
                         color=self.colors["text_dark"],
@@ -260,7 +261,7 @@ class HomeView:
                     )
                 ),
                 ft.OutlinedButton(
-                    "🏠 Amenities", 
+                    "🏠 Amenities",
                     on_click=show_amenities_filter,
                     style=ft.ButtonStyle(
                         color=self.colors["text_dark"],
@@ -268,7 +269,7 @@ class HomeView:
                     )
                 ),
                 ft.OutlinedButton(
-                    "🛏 Room Type", 
+                    "🛏 Room Type",
                     on_click=show_room_type_filter,
                     style=ft.ButtonStyle(
                         color=self.colors["text_dark"],
@@ -276,7 +277,7 @@ class HomeView:
                     )
                 ),
                 ft.OutlinedButton(
-                    "📅 Availability", 
+                    "📅 Availability",
                     on_click=show_availability_filter,
                     style=ft.ButtonStyle(
                         color=self.colors["text_dark"],
@@ -284,7 +285,7 @@ class HomeView:
                     )
                 ),
                 ft.OutlinedButton(
-                    "📍 Location", 
+                    "📍 Location",
                     on_click=show_location_filter,
                     style=ft.ButtonStyle(
                         color=self.colors["text_dark"],
@@ -296,61 +297,27 @@ class HomeView:
 
         # Featured Listings Cards
         def listing_card(property_data, show_details_button=True):
-            name = property_data.get("name", "Boarding House")
-            price = property_data.get("price", 0)
-            price = f"₱{price:,.0f}/mo"
-            rating = "★★★★★"
+            listing_payload = dict(property_data)
+            listing_payload.setdefault("property_name", property_data.get("name") or property_data.get("address"))
+            listing_payload.setdefault("description", property_data.get("description", ""))
+            listing_payload.setdefault("price", property_data.get("price", 0))
+
             image_url = property_data.get("image_url")
             property_id = property_data.get("id")
+            availability = property_data.get("availability_status", "Available")
+            is_available = str(availability).lower() == "available"
 
-            def view_details(e):
+            def view_details(_):
                 self.page.session.set("selected_property_id", property_id)
                 self.page.go("/property-details")
 
-            card_controls = [
-                ft.Container(
-                    width=180,
-                    height=120,
-                    bgcolor=self.colors["border"],
-                    border_radius=6,
-                    clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
-                    content=ft.Image(
-                        src=image_url,
-                        width=180,
-                        height=120,
-                        fit=ft.ImageFit.COVER,
-                    ) if image_url else ft.Icon(ft.Icons.HOME, size=60, color=self.colors["primary"]),
-                ),
-                ft.Text(rating, size=14, weight=ft.FontWeight.BOLD, color=self.colors["secondary"]),
-                ft.Text(name, weight=ft.FontWeight.BOLD, size=14, color=self.colors["text_dark"]),
-                ft.Text(price, color=self.colors["text_light"], size=13)
-            ]
-
-            if show_details_button:
-                card_controls.append(
-                    ft.ElevatedButton(
-                        "View Details",
-                        width=140,
-                        height=35,
-                        on_click=view_details,
-                        bgcolor=self.colors["primary"],
-                        color=self.colors["card_bg"]
-                    )
-                )
-
-            return ft.Container(
-                bgcolor=self.colors["card_bg"],
-                width=200,
-                padding=10,
-                border_radius=8,
-                border=ft.border.all(1, self.colors["border"]),
-                shadow=ft.BoxShadow(blur_radius=8, spread_radius=1, color="#D4C4B080"),
-                content=ft.Column(
-                    horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                    spacing=8,
-                    alignment=ft.MainAxisAlignment.CENTER,
-                    controls=card_controls
-                )
+            return create_home_listing_card(
+                listing=listing_payload,
+                image_url=image_url,
+                is_available=is_available,
+                on_click=view_details if show_details_button else None,
+                show_cta=show_details_button,
+                page=self.page,
             )
 
         featured_row = ft.Row(
@@ -360,25 +327,22 @@ class HomeView:
             controls=[listing_card(prop) for prop in featured_properties] if featured_properties else [ft.Text("No properties available", size=16, color=self.colors["text_light"])]
         )
 
+        from components.logo import Logo
+
         nav_bar = ft.Row(
             alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
             controls=[
-                ft.Text(" C🏠mpusKubo", size=22, weight=ft.FontWeight.BOLD, color=self.colors["primary"]),
+                Logo(size=22, color=self.colors["primary"]),
                 ft.Row([
                     ft.TextButton(
-                        "Login", 
+                        "Login",
                         on_click=lambda _: self.page.go("/login"),
                         style=ft.ButtonStyle(color=self.colors["text_dark"])
                     ),
                     ft.TextButton(
-                        "Register", 
+                        "Register",
                         on_click=lambda _: self.page.go("/signup"),
                         style=ft.ButtonStyle(color=self.colors["text_dark"])
-                    ),
-                    ft.IconButton(
-                        icon=ft.Icons.NOTIFICATIONS, 
-                        tooltip="Notifications",
-                        icon_color=self.colors["primary"]
                     )
                 ])
             ]
@@ -465,8 +429,8 @@ class HomeView:
                 filters_row,
                 ft.Container(height=15),
                 ft.Text(
-                    "Find your next HOME away to Home", 
-                    size=32, 
+                    "Find your next HOME away to Home",
+                    size=32,
                     weight=ft.FontWeight.BOLD,
                     color=self.colors["text_dark"]
                 ),
@@ -483,13 +447,13 @@ class HomeView:
                         horizontal_alignment=ft.CrossAxisAlignment.CENTER,
                         controls=[
                             ft.Text(
-                                "🔍 Want to explore more listings?", 
-                                size=24, 
+                                "🔍 Want to explore more listings?",
+                                size=24,
                                 weight=ft.FontWeight.BOLD,
                                 color=self.colors["text_dark"]
                             ),
                             ft.Text(
-                                "Browse all available properties without creating an account.", 
+                                "Browse all available properties without creating an account.",
                                 size=14,
                                 color=self.colors["text_light"]
                             ),

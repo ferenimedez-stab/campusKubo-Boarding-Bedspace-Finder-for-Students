@@ -5,6 +5,7 @@ import flet as ft
 from services.user_service import UserService
 from services.reservation_service import ReservationService
 from state.session_state import SessionState
+from components.profile_section import ProfileSection
 
 
 class UserProfileView:
@@ -40,7 +41,8 @@ class UserProfileView:
         # Load reservations for this user (returns rows)
         reservations = self.reservation_service.get_user_reservations(user.id)
 
-        # Profile section
+        # Shared profile component
+        profile_comp = ProfileSection(self.page, on_update=lambda: self.page.update())
         profile_section = ft.Container(
             bgcolor="#FFFFFF",
             padding=20,
@@ -48,13 +50,11 @@ class UserProfileView:
             content=ft.Column(
                 spacing=10,
                 controls=[
-                    ft.Text("Profile Information", size=24, weight=ft.FontWeight.BOLD),
+                    profile_comp.get_profile_info(),
                     ft.Divider(),
-                    ft.Row(controls=[ft.Icon(ft.Icons.EMAIL, color="#0078FF"), ft.Text(f"Email: {user.email}")], spacing=10),
-                    ft.Row(controls=[ft.Icon(ft.Icons.PERSON, color="#0078FF"), ft.Text(f"Name: {user.full_name or 'Not provided'}")], spacing=10),
-                    ft.Row(controls=[ft.Icon(ft.Icons.BADGE, color="#0078FF"), ft.Text(f"Role: {user.role}")], spacing=10),
-                ]
-            )
+                    profile_comp.get_account_settings(),
+                ],
+            ),
         )
 
         # Reservations section

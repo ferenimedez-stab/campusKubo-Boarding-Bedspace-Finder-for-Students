@@ -13,6 +13,7 @@ class ChartCard:
         legend: Optional[ft.Control] = None,
         width: Optional[int] = None,
         height: Optional[int] = None,
+        padding: int = 20,
         on_click=None,
     ):
         self.title = title
@@ -23,6 +24,7 @@ class ChartCard:
         self.legend = legend
         self.width = width
         self.height = height
+        self.padding = padding
         self.on_click = on_click
 
     def _build_header(self) -> ft.Row:
@@ -68,7 +70,7 @@ class ChartCard:
         inner = ft.Container(
             width=self.width,
             height=self.height,
-            padding=20,
+            padding=self.padding,
             bgcolor=ft.Colors.WHITE,
             border_radius=12,
             shadow=ft.BoxShadow(

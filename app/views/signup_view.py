@@ -1,5 +1,5 @@
 """
-Signup view 
+Signup view
 """
 import flet as ft
 from storage.db import create_user, validate_password, validate_email
@@ -40,8 +40,6 @@ class SignupView:
             width=160,
             bgcolor=self.colors["background"],
             color=self.colors["text_dark"],
-            bgcolor="#e4e4e4",
-            color="black",
             on_click=lambda _: self.change_role("Property Manager")
         )
 
@@ -88,8 +86,6 @@ class SignupView:
         req_special = ft.Row([
             ft.Icon(ft.Icons.CIRCLE, size=12, color=self.colors["border"]),
             ft.Text("One special character (!@#$%^&*)", size=11, color=self.colors["text_light"])
-            ft.Icon(ft.Icons.CIRCLE, size=12, color=ft.Colors.GREY),
-            ft.Text("At least 8 characters", size=11, color=ft.Colors.GREY)
         ], spacing=5)
 
         password_requirements = ft.Column(
@@ -242,8 +238,16 @@ class SignupView:
             loading.visible = False
 
             if success:
-                msg.value = f"✅ {message}! A confirmation email has been sent to {email.value}. You may now log in."
+                msg.value = (
+                    f"✅ {message}!\n"
+                    f"A confirmation email has been sent to {email.value}.\n"
+                    "You may now log in."
+                )
                 msg.color = self.colors["success"]
+                msg.size = 13  # Changed from font_size to size (correct property name)
+                msg.weight = ft.FontWeight.BOLD  # Changed from bold to weight
+                msg.text_align = ft.TextAlign.CENTER  # Changed from align to text_align
+                msg.no_wrap = False  # Changed from wrap=True to no_wrap=False
 
                 # Clear form after successful registration
                 full_name.value = ""
@@ -254,8 +258,10 @@ class SignupView:
             else:
                 msg.value = f"❌ {message}"
                 msg.color = self.colors["error"]
+                msg.text_align = ft.TextAlign.CENTER
 
             msg.update()
+            loading.visible = False
             loading.update()
 
         # Role selection info box

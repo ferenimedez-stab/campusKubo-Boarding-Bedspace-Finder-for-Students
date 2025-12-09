@@ -3,6 +3,7 @@ import os
 import shutil
 import flet as ft
 from storage.db import get_user_info, update_user_info
+from components.profile_section import ProfileSection
 
 
 class PMProfileView:
@@ -146,13 +147,8 @@ class PMProfileView:
 
         title_text = "PROPERTY MANAGER PROFILE"
 
-        # Profile picture setup
-        profile_dir = "assets/uploads/profile_photos"
-        if not os.path.exists(profile_dir):
-            os.makedirs(profile_dir)
-        profile_image_path = os.path.join(profile_dir, f"profile_{user_id}.png")
-
-        profile_avatar_with_camera = self._setup_avatar(profile_image_path)
+        # ProfileSection component handles avatar, profile info and account settings
+        profile_comp = ProfileSection(self.page, on_update=lambda: self.page.update())
 
         # Role chip
         role_label = "Property Manager"
@@ -231,80 +227,19 @@ class PMProfileView:
                             spacing=20,
                             horizontal_alignment=ft.CrossAxisAlignment.CENTER,
                             controls=[
-                                # Avatar + name + role
-                                ft.Row(
-                                    alignment=ft.MainAxisAlignment.CENTER,
-                                    spacing=16,
-                                    vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                                    controls=[
-                                        profile_avatar_with_camera,
-                                        ft.Column(
-                                            spacing=8,
-                                            controls=[
-                                                ft.Text(
-                                                    full_name or email,
-                                                    size=22,
-                                                    weight=ft.FontWeight.BOLD,
-                                                    color="#1A1A1A",
-                                                ),
-                                                role_chip,
-                                            ],
-                                        ),
-                                    ],
-                                ),
+                                # Use shared ProfileSection for profile + account settings
+                                profile_comp.get_profile_info(),
                                 ft.Divider(),
-                                # Basic Info Section
-                                ft.Column(
-                                    spacing=18,
-                                    alignment=ft.MainAxisAlignment.START,
-                                    controls=[
-                                        ft.Text(
-                                            "Basic info",
-                                            size=18,
-                                            weight=ft.FontWeight.BOLD,
-                                        ),
-                                        self._info_row("Name", name_value),
-                                        self._info_row("E-mail", email_value),
-                                        self._info_row("Phone", phone_display),
-                                        ft.Divider(),
-                                        ft.Text(
-                                            "Business Verification",
-                                            size=18,
-                                            weight=ft.FontWeight.BOLD,
-                                        ),
-                                        self._info_row("Status", status_value),
-                                        ft.Divider(),
-                                        ft.Text(
-                                            "Account info",
-                                            size=18,
-                                            weight=ft.FontWeight.BOLD,
-                                        ),
-                                        self._info_row("Username", email_value),
-                                        self._info_row("Password", "password", obscure=True),
-                                        ft.Divider(),
-                                        ft.Text(
-                                            "Security",
-                                            size=18,
-                                            weight=ft.FontWeight.BOLD,
-                                        ),
-                                        change_password_btn,
-                                        two_fa_switch,
-                                        ft.Divider(),
-                                        ft.Text(
-                                            "Documents",
-                                            size=18,
-                                            weight=ft.FontWeight.BOLD,
-                                        ),
-                                        upload_doc_btn,
-                                    ],
-                                ),
+                                profile_comp.get_account_settings(),
                                 ft.Divider(),
-                                # Edit Profile Button
+                                # Documents + actions (kept from previous layout)
+                                ft.Row(controls=[upload_doc_btn, change_password_btn], spacing=12),
+                                ft.Divider(),
                                 ft.ElevatedButton(
                                     "Edit Profile",
                                     icon=ft.Icons.EDIT,
                                     width=200,
-                                    on_click=lambda e: page.go("/pm/profile/edit"),
+                                    on_click=lambda e: profile_comp.show_edit_profile_dialog(),
                                 ),
                             ],
                         ),

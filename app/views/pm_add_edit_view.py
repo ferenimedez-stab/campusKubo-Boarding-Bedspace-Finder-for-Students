@@ -19,7 +19,12 @@ class PMAddEditView:
 
     def build(self):
         page = self.page
-        user_id = page.session.get("user_id")
+        user_id_raw = page.session.get("user_id")
+        try:
+            user_id = int(user_id_raw) if user_id_raw is not None else None
+        except (TypeError, ValueError):
+            user_id = None
+
         if not user_id:
             page.go("/login")
             return None
@@ -41,7 +46,7 @@ class PMAddEditView:
         if is_edit:
             # Retrieve listing from database
             listing = get_listing_by_id(listing_id)
-            if not listing or listing["pm_id"] != user_id:
+            if not listing or int(listing.get("pm_id", -1)) != user_id:
                 snack_bar = ft.SnackBar(ft.Text("Listing not found or access denied"))
                 page.overlay.append(snack_bar)
                 snack_bar.open = True
@@ -1236,6 +1241,26 @@ class PMAddEditView:
                 )
 
         def save_listing(e):
+            def fail(message: str):
+                msg.value = message
+                msg.color = "red"
+                snack = ft.SnackBar(
+                    content=ft.Text(message),
+                    bgcolor="#F44336",
+                    action="OK",
+                    action_color="white",
+                )
+                setattr(page, 'snack_bar', snack)
+                try:
+                    getattr(page, 'snack_bar').open = True
+                except Exception:
+                    try:
+                        page.open(getattr(page, 'snack_bar'))
+                    except Exception:
+                        pass
+                page.update()
+                return False
+
             # Quick visual feedback
             snack = ft.SnackBar(
                 content=ft.Text("Saving listing..."),
@@ -1254,43 +1279,11 @@ class PMAddEditView:
 
             # Validation
             if not property_name_field.value:
-                msg.value = "Property name is required"
-                msg.color = "red"
-                snack = ft.SnackBar(
-                    content=ft.Text("Missing field: Property Name."),
-                    bgcolor="#F44336",
-                    action="OK",
-                    action_color="white",
-                )
-                setattr(page, 'snack_bar', snack)
-                try:
-                    getattr(page, 'snack_bar').open = True
-                except Exception:
-                    try:
-                        page.open(getattr(page, 'snack_bar'))
-                    except Exception:
-                        pass
-                page.update()
-                return
+                if fail("Missing field: Property Name.") is False:
+                    return
             if not address_field.value:
-                msg.value = "Address is required"
-                msg.color = "red"
-                snack = ft.SnackBar(
-                    content=ft.Text("Missing field: Address."),
-                    bgcolor="#F44336",
-                    action="OK",
-                    action_color="white",
-                )
-                setattr(page, 'snack_bar', snack)
-                try:
-                    getattr(page, 'snack_bar').open = True
-                except Exception:
-                    try:
-                        page.open(getattr(page, 'snack_bar'))
-                    except Exception:
-                        pass
-                page.update()
-                return
+                if fail("Missing field: Address.") is False:
+                    return
 
             def parse_price(raw_value: str | None) -> float | None:
                 """Allow currency symbols, commas, and whitespace for user-friendly input."""
@@ -1314,44 +1307,27 @@ class PMAddEditView:
                 price_field.value = monthly_rent_field.value.strip()
 
             normalized_price = parse_price(price_field.value)
-            if normalized_price is None:
-                msg.value = "Valid price is required"
-                msg.color = "red"
-                snack = ft.SnackBar(
-                    content=ft.Text("Invalid or missing field: Price per month."),
-                    bgcolor="#F44336",
-                    action="OK",
-                    action_color="white",
-                )
-                setattr(page, 'snack_bar', snack)
-                try:
-                    getattr(page, 'snack_bar').open = True
-                except Exception:
-                    try:
-                        page.open(getattr(page, 'snack_bar'))
-                    except Exception:
-                        pass
-                page.update()
-                return
+            if normalized_price is None or normalized_price <= 0:
+                if fail("Invalid or missing field: Price per month.") is False:
+                    return
             if not description_field.value:
-                msg.value = "Description is required"
-                msg.color = "red"
-                snack = ft.SnackBar(
-                    content=ft.Text("Missing field: Description."),
-                    bgcolor="#F44336",
-                    action="OK",
-                    action_color="white",
-                )
-                setattr(page, 'snack_bar', snack)
-                try:
-                    getattr(page, 'snack_bar').open = True
-                except Exception:
-                    try:
-                        page.open(getattr(page, 'snack_bar'))
-                    except Exception:
-                        pass
-                page.update()
-                return
+                if fail("Missing field: Description.") is False:
+                    return
+
+            # Optional numeric deposit validation
+            if deposit_field.value and deposit_field.value.strip():
+                dep_val = parse_price(deposit_field.value)
+                if dep_val is None or dep_val < 0:
+                    if fail("Deposit must be a valid number.") is False:
+                        return
+
+            # Optional phone number validation (digits and basic length)
+            if phone_number_field.value:
+                digits_only = "".join(ch for ch in phone_number_field.value if ch.isdigit())
+                if len(digits_only) < 7 or len(digits_only) > 15:
+                    if fail("Phone number should be 7-15 digits.") is False:
+                        return
+                phone_number_field.value = digits_only
 
             effective_uploaded_files = uploaded_files or []
 
@@ -1425,27 +1401,32 @@ class PMAddEditView:
                 else:
                     lodging_details_field.value = extra_details
 
-            price = normalized_price
+            price: float = float(normalized_price or 0)
+
+            # Safe defaults for DB-bound strings
+            addr_val = address_field.value or ""
+            desc_val = description_field.value or ""
+            lodging_val = lodging_details_field.value or ""
 
             if is_edit:
                 assert listing_id is not None
                 success = update_listing(
                     int(listing_id),
                     int(user_id),
-                    address_field.value,
+                    addr_val,
                     price,
-                    description_field.value,
-                    lodging_details_field.value or "",
+                    desc_val,
+                    lodging_val,
                     effective_uploaded_files,
                 )
                 action = "updated"
             else:
                 listing_id_new = create_listing(
                     user_id,
-                    address_field.value,
+                    addr_val,
                     price,
-                    description_field.value,
-                    lodging_details_field.value or "",
+                    desc_val,
+                    lodging_val,
                     effective_uploaded_files,
                 )
                 success = listing_id_new is not None
