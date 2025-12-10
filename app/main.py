@@ -43,6 +43,8 @@ from views.user_profile_view import UserProfileView
 from views.tenant_reservations_view import TenantReservationsView
 from views.tenant_messages_view import TenantMessagesView
 from views.forbidden_view import ForbiddenView
+from views.terms_view import TermsView
+from views.privacy_view import PrivacyView
 from state.session_state import SessionState
 
 def main(page: ft.Page):
@@ -125,6 +127,12 @@ def main(page: ft.Page):
 
         elif route == "/signup":
             view = SignupView(page).build()
+        
+        elif route == "/terms":
+            view = TermsView(page).build()
+
+        elif route == "/privacy":
+            view = PrivacyView(page).build()
 
         elif route == "/browse":
             view = BrowseView(page).build()

@@ -309,6 +309,7 @@ class HomeView:
 
             def view_details(_):
                 self.page.session.set("selected_property_id", property_id)
+                self.page.session.set("property_source", "/")
                 self.page.go("/property-details")
 
             return create_home_listing_card(

@@ -142,9 +142,9 @@ class PropertyDetailView:
                     ft.Row([
                         ft.IconButton(
                             icon=ft.Icons.ARROW_BACK,
-                            on_click=lambda _: self.page.go("/browse"),
+                            on_click=lambda _: self.page.go(self.page.session.get("property_source") or "/"),
                             icon_color=self.colors["primary"],
-                            tooltip="Back to Browse"
+                            tooltip="Back"
                         ),
                         Logo(size=24, color=self.colors["text_dark"]),
                     ], spacing=5),

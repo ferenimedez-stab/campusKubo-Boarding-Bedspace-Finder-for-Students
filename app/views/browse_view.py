@@ -29,6 +29,7 @@ class BrowseView:
 
         def view_details(e):
             self.page.session.set("selected_property_id", property_id)
+            self.page.session.set("property_source", "/browse")
             self.page.go("/property-details")
 
         # Choose color based on availability
@@ -137,10 +138,10 @@ class BrowseView:
                         icon=ft.Icons.ARROW_BACK,
                         icon_color=self.colors["primary"],
                         icon_size=24,
-                        tooltip="Back",
+                        tooltip="Back to home",
                         on_click=go_back
                     ),
-                    ft.Text("Back", size=14, color=self.colors["text_dark"])
+                    ft.Text("Back to Home", size=14, color=self.colors["text_dark"])
                 ]
             )
         )
@@ -410,7 +411,9 @@ class BrowseView:
                     if not new_filters["room_type"]:
                         new_filters.pop("room_type")
                     self.page.session.set("filters", new_filters)
-                    self.page.go("/browse")
+                    self.page.views.clear()
+                    self.page.views.append(self.build())
+                    self.page.update()
 
                 active_filter_chips.append(
                     ft.Chip(
@@ -430,8 +433,9 @@ class BrowseView:
                     if not new_filters["amenities"]:
                         new_filters.pop("amenities")
                     self.page.session.set("filters", new_filters)
-                    self.page.go("/browse")
-
+                    self.page.views.clear()
+                    self.page.views.append(self.build())
+                    self.page.update()
                 active_filter_chips.append(
                     ft.Chip(
                         label=ft.Text(f"Amenity: {amen}", color=self.colors["text_dark"]),
@@ -447,7 +451,9 @@ class BrowseView:
                 new_filters = filters.copy()
                 new_filters.pop("availability", None)
                 self.page.session.set("filters", new_filters)
-                self.page.go("/browse")
+                self.page.views.clear()
+                self.page.views.append(self.build())
+                self.page.update()
 
             active_filter_chips.append(
                 ft.Chip(
@@ -463,9 +469,9 @@ class BrowseView:
             def remove_location(e):
                 new_filters = filters.copy()
                 new_filters.pop("location", None)
-                self.page.session.set("filters", new_filters)
-                self.page.go("/browse")
-
+                self.page.views.clear()
+                self.page.views.append(self.build())
+                self.page.update()
             active_filter_chips.append(
                 ft.Chip(
                     label=ft.Text(f"Location: {filters['location']}", color=self.colors["text_dark"]),
