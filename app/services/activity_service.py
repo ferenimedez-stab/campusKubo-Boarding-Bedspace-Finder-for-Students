@@ -3,6 +3,10 @@ Activity Service
 Delegates to storage.db helpers to log and fetch recent activity.
 """
 
+import os
+import sys
+# Ensure top-level `storage` package is importable when running from `app.services`
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from storage.db import log_activity, get_recent_activity
 
 

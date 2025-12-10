@@ -302,17 +302,20 @@ def _seed_demo_data(conn):
         for m in range(1, 5):
             past_start = (now_dt - datetime.timedelta(days=30 * m + idx)).date().isoformat()
             past_end = (now_dt - datetime.timedelta(days=30 * m - 5)).date().isoformat()
-            cur.execute("INSERT OR IGNORE INTO reservations (listing_id, tenant_id, start_date, end_date, status, created_at) VALUES (?, ?, ?, ?, 'approved', ?)", (lid, tenant_ids[(idx + m) % len(tenant_ids)], past_start, past_end, (now_dt - datetime.timedelta(days=30 * m)).isoformat()))
+            tenant_for_past = tenant_ids[(idx + m) % max(1, len(tenant_ids))] if tenant_ids else None
+            cur.execute("INSERT OR IGNORE INTO reservations (listing_id, tenant_id, start_date, end_date, status, created_at) VALUES (?, ?, ?, ?, 'approved', ?)", (lid, tenant_for_past, past_start, past_end, (now_dt - datetime.timedelta(days=30 * m)).isoformat()))
 
     conn.commit()
 
     # Saved listings: have tenants save several listings
     for t in tenant_ids:
         # save up to 5 listings
-        for lid in listing_ids[(t % len(listing_ids)):(t % len(listing_ids)) + 5]:
-            cur.execute("SELECT saved_id FROM saved_listings WHERE user_id = ? AND listing_id = ?", (t, lid))
-            if not cur.fetchone():
-                cur.execute("INSERT INTO saved_listings (user_id, listing_id, saved_at) VALUES (?, ?, ?)", (t, lid, now))
+        if listing_ids:
+            start_idx = t % max(1, len(listing_ids))
+            for lid in listing_ids[start_idx:start_idx + 5]:
+                cur.execute("SELECT saved_id FROM saved_listings WHERE user_id = ? AND listing_id = ?", (t, lid))
+                if not cur.fetchone():
+                    cur.execute("INSERT INTO saved_listings (user_id, listing_id, saved_at) VALUES (?, ?, ?)", (t, lid, now))
 
     conn.commit()
 
@@ -320,7 +323,7 @@ def _seed_demo_data(conn):
     notif_types = ["view", "save", "reservation", "reminder", "payment"]
     for uid in all_users[:20]:
         for n in range(3):
-            ntype = notif_types[(uid + n) % len(notif_types)]
+            ntype = notif_types[(uid + n) % max(1, len(notif_types))]
             msg = f"Demo {ntype} notification #{n+1} for user {uid}"
             cur.execute("INSERT INTO notifications (user_id, notification_type, category, message, is_read, created_at) VALUES (?, ?, 'activity', ?, 0, ?)", (uid, ntype, msg, now))
 
@@ -343,7 +346,7 @@ def _seed_demo_data(conn):
     # Reviews: add multiple reviews per listing
     for lid in listing_ids[:20]:
         for r_i in range(1, 6):
-            reviewer = tenant_ids[(lid + r_i) % len(tenant_ids)] if tenant_ids else None
+            reviewer = tenant_ids[(lid + r_i) % max(1, len(tenant_ids))] if tenant_ids else None
             if not reviewer:
                 continue
             # avoid duplicate identical review

@@ -81,19 +81,16 @@ class AdminUserTable:
                 ])
             )
 
+        # Match the simple DataTable style: numeric ID, simple columns, rows built from DataRow
         return ft.DataTable(
             columns=[
-                ft.DataColumn(ft.Text("ID")),
+                ft.DataColumn(ft.Text("ID"), numeric=True),
                 ft.DataColumn(ft.Text("Email")),
                 ft.DataColumn(ft.Text("Full Name")),
                 ft.DataColumn(ft.Text("Role")),
                 ft.DataColumn(ft.Text("Actions")),
             ],
             rows=rows,
-            border=ft.border.all(1, "#E0E0E0"),
-            heading_row_color="#F5F5F5",
-            heading_row_height=50,
-            height=50,
-            horizontal_margin=20,
-            column_spacing=20
+            column_spacing=12,
+            expand=True,
         )

@@ -1,6 +1,6 @@
 # views/login_view.py
 """
-Login view 
+Login view
 """
 import flet as ft
 from storage.db import validate_user
@@ -22,41 +22,179 @@ class LoginView:
         self.page.vertical_alignment = ft.MainAxisAlignment.CENTER
 
         email = ft.TextField(
-            label="Email Address", 
+            label="Email Address",
             width=330,
             bgcolor=self.colors["background"],
             border_color=self.colors["border"],
             focused_border_color=self.colors["primary"],
-            color=self.colors["text_dark"]
+            color=self.colors["text_dark"],
+            on_change=lambda e: setattr(e.control, 'error_text', ''),
+            autofocus=True
         )
         password = ft.TextField(
-            label="Password", 
-            width=330, 
-            password=True, 
+            label="Password",
+            width=330,
+            password=True,
             can_reveal_password=True,
             bgcolor=self.colors["background"],
             border_color=self.colors["border"],
             focused_border_color=self.colors["primary"],
-            color=self.colors["text_dark"]
+            color=self.colors["text_dark"],
+            on_change=lambda e: setattr(e.control, 'error_text', '')
         )
-        msg = ft.Text("", size=16, color=self.colors["error"], weight=ft.FontWeight.BOLD)
+
+        # Loading indicator
+        loading = ft.ProgressRing(visible=False, width=20, height=20, color=self.colors["primary"])
+
+        # Define login button (will set on_click after do_login is defined)
+        login_btn = ft.ElevatedButton(
+            "Log In",
+            width=330,
+            height=45,
+            bgcolor=self.colors["primary"],
+            color=self.colors["card_bg"]
+        )
 
         def do_login(e):
+            # Clear previous errors
+            email.error_text = ""
+            password.error_text = ""
+            loading.visible = True
+            self.page.update()
+
             email_val = email.value or ""
             password_val = password.value or ""
             print(f"Login attempt: email={email_val}, password provided={bool(password_val)}")
+
+            # Validate email field is filled
+            if not email_val.strip():
+                email.error_text = "Please fill out this field."
+                loading.visible = False
+                email.update()
+                loading.update()
+                return
+
+            # Validate password field is filled
+            if not password_val:
+                password.error_text = "Please fill out this field."
+                loading.visible = False
+                password.update()
+                loading.update()
+                return
+
+            # Basic client-side email format validation: require '@' and '.'
+            if '@' not in email_val or '.' not in email_val:
+                email.error_text = "Please enter a valid email address"
+                loading.visible = False
+                email.update()
+                loading.update()
+                return
+
+            # Import lockout check
+            from storage.db import is_account_locked
+
+            # Check if account is locked
+            is_locked, unlock_time = is_account_locked(email_val)
+            if is_locked and unlock_time:
+                from datetime import datetime
+                try:
+                    unlock_dt = datetime.fromisoformat(unlock_time)
+                    time_remaining = int((unlock_dt - datetime.utcnow()).total_seconds())
+                    
+                    # Show snackbar for account lockout
+                    self.page.snack_bar = ft.SnackBar(
+                        content=ft.Text(
+                            f"Account temporarily locked due to multiple failed login attempts. Try again in {time_remaining} seconds."
+                        ),
+                        bgcolor=self.colors["error"],
+                        duration=time_remaining * 1000 if time_remaining < 60 else 60000,
+                    )
+                    self.page.snack_bar.open = True
+                    self.page.update()
+                    
+                    # Disable login button
+                    login_btn.disabled = True
+                    login_btn.bgcolor = self.colors.get("border", "#cccccc")
+
+                    # Start a background countdown thread
+                    try:
+                        import threading, time as _time
+
+                        existing = getattr(self.page, '_login_cooldown_thread', None)
+                        if not (existing and getattr(existing, 'is_alive', lambda: False)()):
+                            setattr(self.page, '_login_cooldown_stop', False)
+
+                            def _countdown_loop():
+                                while True:
+                                    if getattr(self.page, '_login_cooldown_stop', False):
+                                        break
+                                    remaining = int((unlock_dt - datetime.utcnow()).total_seconds())
+                                    if remaining <= 0:
+                                        # Cooldown finished
+                                        login_btn.disabled = False
+                                        login_btn.bgcolor = self.colors.get("primary", "#0078FF")
+                                        try:
+                                            self.page.update()
+                                        except Exception:
+                                            pass
+                                        break
+                                    _time.sleep(1)
+
+                            th = threading.Thread(target=_countdown_loop, daemon=True)
+                            setattr(self.page, '_login_cooldown_thread', th)
+                            th.start()
+                    except Exception:
+                        pass
+                except:
+                    self.page.snack_bar = ft.SnackBar(
+                        content=ft.Text("Account temporarily locked. Please try again later."),
+                        bgcolor=self.colors["error"],
+                    )
+                    self.page.snack_bar.open = True
+                    self.page.update()
+                    login_btn.disabled = True
+                    login_btn.bgcolor = self.colors.get("border", "#cccccc")
+                
+                loading.visible = False
+                loading.update()
+                self.page.update()
+                return
+
+            # Re-enable login button if it was disabled and stop any cooldown thread
+            login_btn.disabled = False
+            login_btn.bgcolor = self.colors.get("primary", "#0078FF")
+            try:
+                setattr(self.page, '_login_cooldown_stop', True)
+            except Exception:
+                pass
+
             user = validate_user(email_val, password_val)
             print(f"User validated: {user}")
+            
+            loading.visible = False
+            loading.update()
+
             if user:
                 # Set all session data properly
+                from datetime import datetime
                 self.page.session.set("user_id", user.get('id'))
                 self.page.session.set("email", user.get('email'))
                 self.page.session.set("role", user.get('role'))
                 self.page.session.set("full_name", user.get('full_name', ''))
                 self.page.session.set("is_logged_in", True)
+                self.page.session.set("last_activity", datetime.utcnow().isoformat())
 
                 user_role = user.get('role')
                 print(f"Login successful - ID: {user.get('id')}, Role: {user_role}, Email: {user.get('email')}")
+
+                # Show success message
+                self.page.snack_bar = ft.SnackBar(
+                    content=ft.Text(f"✅ Welcome back, {user.get('full_name', 'User')}!"),
+                    bgcolor=self.colors["success"],
+                    duration=2000,
+                )
+                self.page.snack_bar.open = True
+                self.page.update()
 
                 # Map DB role to routes used in the app
                 if user_role in ("pm", "property_manager"):
@@ -69,8 +207,9 @@ class LoginView:
                     self.page.go("/")
             else:
                 print("Login failed")
-                msg.value = "Incorrect email or password. Please try again."
-                self.page.update()
+                # Show error on password field (more conventional for login forms)
+                password.error_text = "Incorrect email or password"
+                password.update()
 
         def show_forgot_password(e):
             reset_email = ft.TextField(
@@ -79,38 +218,35 @@ class LoginView:
                 width=350,
                 bgcolor=self.colors["background"],
                 border_color=self.colors["border"],
-                color=self.colors["text_dark"]
+                color=self.colors["text_dark"],
+                on_change=lambda e: setattr(e.control, 'error_text', '')
             )
-            
+
             def send_reset_link(e):
-                if reset_email.value:
-                    # TODO: Implement actual password reset logic here
-                    # This would typically send an email with a reset link
-                    dialog.open = False
-                    self.page.update()
-                    
-                    success_snack = ft.SnackBar(
-                        ft.Text(
-                            f"Password reset link sent to {reset_email.value}",
-                            color=self.colors["card_bg"]
-                        ),
-                        bgcolor=self.colors["accent"]
-                    )
-                    self.page.overlay.append(success_snack)
-                    success_snack.open = True
-                    self.page.update()
-                else:
-                    error_text.value = "Please enter your email address"
-                    error_text.visible = True
-                    self.page.update()
-            
-            error_text = ft.Text(
-                "",
-                size=12,
-                color=self.colors["error"],
-                visible=False
-            )
-            
+                if not reset_email.value or not reset_email.value.strip():
+                    reset_email.error_text = "Please enter your email address"
+                    reset_email.update()
+                    return
+
+                if '@' not in reset_email.value or '.' not in reset_email.value:
+                    reset_email.error_text = "Please enter a valid email address"
+                    reset_email.update()
+                    return
+
+                # TODO: Implement actual password reset logic here
+                dialog.open = False
+                self.page.update()
+
+                self.page.snack_bar = ft.SnackBar(
+                    content=ft.Text(
+                        f"✅ Password reset link sent to {reset_email.value}"
+                    ),
+                    bgcolor=self.colors["success"],
+                    duration=4000,
+                )
+                self.page.snack_bar.open = True
+                self.page.update()
+
             dialog = ft.AlertDialog(
                 title=ft.Text(
                     "🔑 Reset Password",
@@ -128,7 +264,6 @@ class LoginView:
                         ),
                         ft.Container(height=10),
                         reset_email,
-                        error_text
                     ], tight=True)
                 ),
                 actions=[
@@ -149,6 +284,9 @@ class LoginView:
             self.page.overlay.append(dialog)
             dialog.open = True
             self.page.update()
+
+        # Set the on_click handler for login button
+        login_btn.on_click = do_login
 
         return ft.View("/login",
             vertical_alignment=ft.MainAxisAlignment.CENTER,
@@ -181,7 +319,7 @@ class LoginView:
                                                 ft.Text("Back to Home", color=self.colors["text_dark"])
                                             ]
                                         ),
-                                            on_click=lambda _: go_home(self.page)
+                                        on_click=lambda _: go_home(self.page)
                                     ),
                                 ]
                             ),
@@ -195,6 +333,7 @@ class LoginView:
                             password,
                             ft.Row(
                                 alignment=ft.MainAxisAlignment.END,
+                                width=330,
                                 controls=[
                                     ft.TextButton(
                                         "Forgot Password?",
@@ -203,14 +342,11 @@ class LoginView:
                                     )
                                 ]
                             ),
-                            msg,
-                            ft.ElevatedButton(
-                                "Log In",
-                                width=330,
-                                on_click=do_login,
-                                bgcolor=self.colors["primary"],
-                                color=self.colors["card_bg"]
+                            ft.Row(
+                                alignment=ft.MainAxisAlignment.CENTER,
+                                controls=[loading]
                             ),
+                            login_btn,
                             ft.TextButton(
                                 "Don't have an account? Sign Up",
                                 on_click=lambda _: self.page.go("/signup"),
@@ -231,7 +367,7 @@ class LoginView:
                 )
             ]
         )
-    
+
     def _close_dialog(self, dialog):
         dialog.open = False
         self.page.update()

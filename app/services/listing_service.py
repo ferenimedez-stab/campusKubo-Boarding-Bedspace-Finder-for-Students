@@ -4,10 +4,12 @@ Listing service - business logic for listings
 from storage.db import (
     get_connection, get_listings, get_listing_by_id, get_listing_images,
     create_listing, update_listing, delete_listing, delete_listing_admin,
-    get_listing_availability
+    get_listing_availability, change_listing_status
 )
 from models.listing import Listing
 from typing import List, Optional, Tuple
+from datetime import datetime
+from services.refresh_service import notify as _notify_refresh
 
 
 class ListingService:
@@ -74,6 +76,10 @@ class ListingService:
         )
 
         if listing_id:
+            try:
+                _notify_refresh()
+            except Exception:
+                pass
             return True, "Listing created successfully", listing_id
         else:
             return False, "Failed to create listing", None
@@ -108,6 +114,10 @@ class ListingService:
         )
 
         if success:
+            try:
+                _notify_refresh()
+            except Exception:
+                pass
             return True, "Listing updated successfully"
         else:
             return False, "Failed to update listing or unauthorized"
@@ -119,6 +129,10 @@ class ListingService:
         """
         success = delete_listing(listing_id, owner_id)
         if success:
+            try:
+                _notify_refresh()
+            except Exception:
+                pass
             return True, "Listing deleted successfully"
         else:
             return False, "Failed to delete listing or unauthorized"
@@ -130,6 +144,10 @@ class ListingService:
         """
         success = delete_listing_admin(listing_id)
         if success:
+            try:
+                _notify_refresh()
+            except Exception:
+                pass
             return True, "Listing deleted by admin"
         else:
             return False, "Failed to delete listing (admin)"
@@ -146,6 +164,54 @@ class ListingService:
             if q in getattr(listing, "address", "").lower()
             or q in getattr(listing, "description", "").lower()
         ]
+
+    @staticmethod
+    def update_existing_listing_admin(
+        listing_id: int,
+        address: str,
+        price: float,
+        description: str,
+        lodging_details: str,
+        status: str,
+        pm_id: Optional[int] = None
+    ) -> Tuple[bool, str]:
+        """Admin-level listing update (can change owner, status, etc.)"""
+        if not address or not address.strip():
+            return False, "Address is required"
+        if price <= 0:
+            return False, "Price must be greater than 0"
+        if not description or not description.strip():
+            return False, "Description is required"
+
+        conn = get_connection()
+        cur = conn.cursor()
+        try:
+            if pm_id is not None:
+                cur.execute(
+                    """UPDATE listings SET address = ?, price = ?, description = ?,
+                       lodging_details = ?, status = ?, pm_id = ?, updated_at = ?
+                       WHERE id = ?""",
+                    (address, price, description, lodging_details, status, pm_id, datetime.utcnow().isoformat(), listing_id)
+                )
+            else:
+                cur.execute(
+                    """UPDATE listings SET address = ?, price = ?, description = ?,
+                       lodging_details = ?, status = ?, updated_at = ? WHERE id = ?""",
+                    (address, price, description, lodging_details, status, datetime.utcnow().isoformat(), listing_id)
+                )
+            conn.commit()
+            if cur.rowcount > 0:
+                try:
+                    _notify_refresh()
+                except Exception:
+                    pass
+                return True, "Listing updated successfully"
+            return False, "Listing not found"
+        except Exception as e:
+            conn.rollback()
+            return False, f"Error updating listing: {str(e)}"
+        finally:
+            conn.close()
 
     @staticmethod
     def filter_by_price(

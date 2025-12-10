@@ -3,7 +3,8 @@ import flet as ft
 
 
 class AdminStatsCard:
-    def __init__(self, title, value, icon=None, trend_value=None, trend_up=True, color="#0078FF", on_click=None, width: int = 220, height: int = 140):
+    def __init__(self, title, value, icon=None, trend_value=None, trend_up=True,
+                 color="#0078FF", on_click=None, width: int = 220, height: int = 150):
         """Reusable admin KPI card.
 
         Args:
@@ -38,43 +39,95 @@ class AdminStatsCard:
                 ic = ft.Icon(ft.Icons.INFO, size=24, color=self.color)
 
         return ft.Container(
-            bgcolor=f"{self.color}15",
-            padding=10,
-            border_radius=8,
-            content=ic
+            width=48,
+            height=48,
+            bgcolor=f"{self.color}1F",
+            border_radius=14,
+            alignment=ft.alignment.center,
+            content=ic,
         )
 
     def build(self):
-        trend_row = ft.Row(spacing=6, controls=[])
+        trend_badge = None
         if self.trend_value is not None:
             trend_icon = ft.Icons.TRENDING_UP if self.trend_up else ft.Icons.TRENDING_DOWN
             trend_color = "#4CAF50" if self.trend_up else "#F44336"
-            trend_row.controls.extend([
-                ft.Icon(trend_icon, size=16, color=trend_color),
-                ft.Text(f"{self.trend_value}%", size=12, color=trend_color)
-            ])
+            trend_badge = ft.Row(
+                spacing=4,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                controls=[
+                    ft.Icon(trend_icon, size=18, color=trend_color),
+                    ft.Text(
+                        f"{self.trend_value}%",
+                        size=13,
+                        color=trend_color,
+                        weight=ft.FontWeight.BOLD,
+                    ),
+                ],
+            )
 
-        # Top row: title and chevron
-        right_row = ft.Row(controls=[ft.Icon(ft.Icons.CHEVRON_RIGHT, size=18, color=ft.Colors.GREY)])
+        # Header section with icon + title text stacked neatly
+        header_section = ft.Row(
+            alignment=ft.MainAxisAlignment.START,
+            spacing=12,
+            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+            controls=[
+                self._build_icon(),
+                ft.Column(
+                    spacing=4,
+                    alignment=ft.MainAxisAlignment.CENTER,
+                    controls=[
+                        ft.Text(self.title.upper(), size=12, color="#6B7280", weight=ft.FontWeight.BOLD),
+                        ft.Text("Overview", size=11, color="#A0AEC0"),
+                    ],
+                ),
+            ],
+        )
+
+        trend_column = ft.Column(
+            spacing=4,
+            horizontal_alignment=ft.CrossAxisAlignment.START,
+            controls=[
+                trend_badge or ft.Container(width=0, height=0),
+                ft.Text("vs last period", size=11, color="#94A3B8"),
+            ],
+        )
+
+        value_row = ft.Row(
+            alignment=ft.MainAxisAlignment.CENTER,
+            spacing=12,
+            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+            controls=[
+                ft.Text(
+                    str(self.value),
+                    size=32,
+                    weight=ft.FontWeight.BOLD,
+                    color="#0F172A",
+                ),
+                trend_column,
+            ],
+        )
+
+        chevron = ft.Icon(ft.Icons.CHEVRON_RIGHT, size=20, color="#CBD5F5")
+        if self.on_click:
+            chevron = ft.GestureDetector(on_tap=self.on_click, content=chevron, mouse_cursor=ft.MouseCursor.CLICK)
 
         content = ft.Column(
-            spacing=8,
+            spacing=14,
+            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
             controls=[
                 ft.Row(
                     alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-                    controls=[
-                        ft.Row(controls=[self._build_icon(), ft.Container(width=8), ft.Column(controls=[ft.Text(self.title, size=13, color=ft.Colors.BLACK)])]),
-                        right_row,
-                    ]
+                    vertical_alignment=ft.CrossAxisAlignment.START,
+                    controls=[header_section, chevron],
                 ),
-                ft.Text(str(self.value), size=28, weight=ft.FontWeight.BOLD, color="#1a1a2e"),
-                ft.Row(alignment=ft.MainAxisAlignment.SPACE_BETWEEN, controls=[ft.Text(""), trend_row])
-            ]
+                value_row,
+            ],
         )
 
         inner = ft.Container(
             bgcolor="white",
-            padding=20,
+            padding=ft.padding.symmetric(horizontal=20, vertical=18),
             width=self.width,
             height=self.height,
             border_radius=12,

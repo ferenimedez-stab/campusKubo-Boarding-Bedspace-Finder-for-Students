@@ -1,5 +1,5 @@
 """
-Signup view 
+Signup view
 """
 import flet as ft
 from storage.db import create_user, validate_password, validate_email
@@ -40,8 +40,6 @@ class SignupView:
             width=160,
             bgcolor=self.colors["background"],
             color=self.colors["text_dark"],
-            bgcolor="#e4e4e4",
-            color="black",
             on_click=lambda _: self.change_role("Property Manager")
         )
 
@@ -54,7 +52,9 @@ class SignupView:
             bgcolor=self.colors["background"],
             border_color=self.colors["border"],
             focused_border_color=self.colors["primary"],
-            color=self.colors["text_dark"]
+            color=self.colors["text_dark"],
+            on_change=lambda e: setattr(e.control, 'error_text', ''),
+            autofocus=True
         )
 
         email = ft.TextField(
@@ -66,7 +66,8 @@ class SignupView:
             bgcolor=self.colors["background"],
             border_color=self.colors["border"],
             focused_border_color=self.colors["primary"],
-            color=self.colors["text_dark"]
+            color=self.colors["text_dark"],
+            on_change=lambda e: setattr(e.control, 'error_text', '')
         )
 
         # Password requirements display
@@ -88,8 +89,6 @@ class SignupView:
         req_special = ft.Row([
             ft.Icon(ft.Icons.CIRCLE, size=12, color=self.colors["border"]),
             ft.Text("One special character (!@#$%^&*)", size=11, color=self.colors["text_light"])
-            ft.Icon(ft.Icons.CIRCLE, size=12, color=ft.Colors.GREY),
-            ft.Text("At least 8 characters", size=11, color=ft.Colors.GREY)
         ], spacing=5)
 
         password_requirements = ft.Column(
@@ -103,10 +102,14 @@ class SignupView:
                 req_special,
             ]
         )
+        
         def validate_password_live(e):
             """Real-time password validation with visual feedback"""
             pwd = password.value or ""
             password_requirements.visible = True
+            # Clear error text when typing
+            password.error_text = ""
+            
             # Check each requirement
             has_length = len(pwd) >= 8
             has_uppercase = any(c.isupper() for c in pwd)
@@ -153,85 +156,138 @@ class SignupView:
             bgcolor=self.colors["background"],
             border_color=self.colors["border"],
             focused_border_color=self.colors["primary"],
-            color=self.colors["text_dark"]
+            color=self.colors["text_dark"],
+            on_change=lambda e: setattr(e.control, 'error_text', '')
         )
 
+        # Terms checkbox 
         agree = ft.Checkbox(
             value=False,
-            fill_color=self.colors["primary"],
-            check_color=self.colors["card_bg"]
-        )
-        terms_text = ft.Text(
-            "I agree to the Terms and Conditions and Privacy Policies",
-            size=12,
-            color=self.colors["text_dark"]
+            active_color=self.colors["primary"]
         )
 
-        msg = ft.Text(" ", size=12, text_align=ft.TextAlign.CENTER)
+        terms_row = ft.Row(
+            controls=[
+                agree,
+                ft.Column(
+                    controls=[
+                        ft.Row(
+                            controls=[
+                                ft.Text("I agree to the ", size=14, color=self.colors["text_dark"]),
+                                ft.TextButton(
+                                    "Terms and Conditions",
+                                    on_click=lambda _: self.page.go("/terms"),
+                                    style=ft.ButtonStyle(
+                                        padding=0,
+                                        color=self.colors["primary"]
+                                    ),
+                                ),
+                            ],
+                            spacing=0,
+                        ),
+                        ft.Row(
+                            controls=[
+                                ft.Text("and ", size=14, color=self.colors["text_dark"]),
+                                ft.TextButton(
+                                    "Privacy Policies",
+                                    on_click=lambda _: self.page.go("/privacy"),
+                                    style=ft.ButtonStyle(
+                                        padding=0,
+                                        color=self.colors["primary"]
+                                    ),
+                                ),
+                            ],
+                            spacing=0,
+                        ),
+                    ],
+                    spacing=0,
+                    horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                ),
+            ],
+            alignment=ft.MainAxisAlignment.CENTER,
+            spacing=8,
+        )
+
         loading = ft.ProgressRing(visible=False, width=20, height=20, color=self.colors["primary"])
 
         def do_signup(e):
-            # Clear previous messages
-            msg.value = ""
-            msg.color = self.colors["error"]
+            # Clear previous error messages
+            full_name.error_text = ""
+            email.error_text = ""
+            password.error_text = ""
+            confirm_pw.error_text = ""
+            
             loading.visible = True
             self.page.update()
 
             # Validate all fields are filled
             if not full_name.value or not full_name.value.strip():
-                msg.value = "❌ Full name is required"
+                full_name.error_text = "Please fill out this field."
                 loading.visible = False
-                msg.update()
+                full_name.update()
                 loading.update()
                 return
 
             if not email.value or not email.value.strip():
-                msg.value = "❌ Email address is required"
+                email.error_text = "Please fill out this field."
                 loading.visible = False
-                msg.update()
+                email.update()
                 loading.update()
                 return
 
             if not password.value:
-                msg.value = "❌ Password is required"
+                password.error_text = "Please fill out this field."
                 loading.visible = False
-                msg.update()
+                password.update()
+                loading.update()
+                return
+
+            if not confirm_pw.value:
+                confirm_pw.error_text = "Please fill out this field."
+                loading.visible = False
+                confirm_pw.update()
                 loading.update()
                 return
 
             # Check if passwords match
             if password.value != confirm_pw.value:
-                msg.value = "❌ Passwords do not match"
+                confirm_pw.error_text = "Passwords do not match"
                 loading.visible = False
-                msg.update()
+                confirm_pw.update()
                 loading.update()
                 return
 
             # Check terms agreement
             if not agree.value:
-                msg.value = "❌ You must agree to the Terms and Conditions"
+                self.page.show_snack_bar(
+                    ft.SnackBar(
+                        content=ft.Text("❌ You must agree to the Terms and Conditions"),
+                        bgcolor=self.colors["error"],
+                    )
+                )
                 loading.visible = False
-                msg.update()
                 loading.update()
                 return
 
+            # Validate password requirements
             is_valid, validation_msg = validate_password(password.value)
             if not is_valid:
-                msg.value = f"❌ {validation_msg}"
+                password.error_text = validation_msg
                 loading.visible = False
-                msg.update()
+                password.update()
                 loading.update()
                 return
 
+            # Validate email format
             is_valid, validation_msg = validate_email(email.value)
             if not is_valid:
-                msg.value = f"❌ {validation_msg}"
+                email.error_text = validation_msg
                 loading.visible = False
-                msg.update()
+                email.update()
                 loading.update()
                 return
 
-            # Create user (validation happens in create_user function)
+            # Create user
             success, message = create_user(
                 full_name.value,
                 email.value,
@@ -242,8 +298,18 @@ class SignupView:
             loading.visible = False
 
             if success:
-                msg.value = f"✅ {message}! A confirmation email has been sent to {email.value}. You may now log in."
-                msg.color = self.colors["success"]
+                # Show success message
+                self.page.show_snack_bar(
+                    ft.SnackBar(
+                        content=ft.Text(
+                            f"✅ {message}!\n"
+                            f"A confirmation email has been sent to {email.value}.\n"
+                            "You may now log in."
+                        ),
+                        bgcolor=self.colors["success"],
+                        duration=5000,
+                    )
+                )
 
                 # Clear form after successful registration
                 full_name.value = ""
@@ -251,11 +317,28 @@ class SignupView:
                 password.value = ""
                 confirm_pw.value = ""
                 agree.value = False
+                password_requirements.visible = False
+                
+                full_name.update()
+                email.update()
+                password.update()
+                confirm_pw.update()
+                agree.update()
+                password_requirements.update()
+                
+                # Redirect to login after 2 seconds
+                import time
+                time.sleep(2)
+                self.page.go("/login")
             else:
-                msg.value = f"❌ {message}"
-                msg.color = self.colors["error"]
+                # Show error message
+                self.page.show_snack_bar(
+                    ft.SnackBar(
+                        content=ft.Text(f"❌ {message}"),
+                        bgcolor=self.colors["error"],
+                    )
+                )
 
-            msg.update()
             loading.update()
 
         # Role selection info box
@@ -335,16 +418,12 @@ class SignupView:
                             confirm_pw,
 
                             # Terms checkbox
-                            ft.Row(
-                                controls=[agree, terms_text],
-                                alignment=ft.MainAxisAlignment.START,
-                                width=330
-                            ),
+                            terms_row,
 
-                            # Messages and loading
+                            # Loading indicator
                             ft.Row(
                                 alignment=ft.MainAxisAlignment.CENTER,
-                                controls=[loading, msg]
+                                controls=[loading]
                             ),
 
                             # Submit button

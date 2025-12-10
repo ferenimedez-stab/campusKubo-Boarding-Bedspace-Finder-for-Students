@@ -1,0 +1,126 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CampusKubo Data Model Schema",
+  "description": "Comprehensive JSON Schema describing the primary data entities used by CampusKubo.",
+  "type": "object",
+  "properties": {
+    "users": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/user" }
+    },
+    "listings": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/listing" }
+    },
+    "reservations": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/reservation" }
+    },
+    "activity_logs": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/activity_log" }
+    },
+    "login_attempts": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/login_attempt" }
+    },
+    "settings": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/definitions/setting" }
+    }
+  },
+  "required": ["users", "listings"],
+  "definitions": {
+    "user": {
+      "type": "object",
+      "required": ["id", "email", "password_hash", "role", "created_at"],
+      "properties": {
+        "id": { "type": "integer", "minimum": 1 },
+        "email": { "type": "string", "format": "email" },
+        "password_hash": { "type": "string" },
+        "role": { "type": "string", "enum": ["visitor", "tenant", "pm", "admin"] },
+        "full_name": { "type": "string" },
+        "deleted_at": { "type": ["string", "null"], "format": "date-time" },
+        "created_at": { "type": "string", "format": "date-time" },
+        "last_activity": { "type": ["string", "null"], "format": "date-time" },
+        "profile_photo_url": { "type": "string", "format": "uri" }
+      },
+      "additionalProperties": false
+    },
+
+    "listing": {
+      "type": "object",
+      "required": ["id", "owner_id", "title", "address", "price", "status", "created_at"],
+      "properties": {
+        "id": { "type": "integer", "minimum": 1 },
+        "owner_id": { "type": "integer", "minimum": 1 },
+        "title": { "type": "string", "minLength": 1 },
+        "address": { "type": "string" },
+        "description": { "type": "string" },
+        "price": { "type": "number", "minimum": 0 },
+        "amenities": { "type": "array", "items": { "type": "string" }, "default": [] },
+        "image_urls": { "type": "array", "items": { "type": "string", "format": "uri" }, "default": [] },
+        "status": { "type": "string", "enum": ["draft", "pending", "approved", "rejected", "archived"] },
+        "availability_status": { "type": "string", "enum": ["Available", "Reserved", "Unavailable"], "default": "Available" },
+        "lodging_details": { "type": "string" },
+        "created_at": { "type": "string", "format": "date-time" },
+        "updated_at": { "type": ["string", "null"], "format": "date-time" }
+      },
+      "additionalProperties": false
+    },
+
+    "reservation": {
+      "type": "object",
+      "required": ["id", "listing_id", "user_id", "start_date", "end_date", "status", "created_at"],
+      "properties": {
+        "id": { "type": "integer", "minimum": 1 },
+        "listing_id": { "type": "integer", "minimum": 1 },
+        "user_id": { "type": "integer", "minimum": 1 },
+        "start_date": { "type": "string", "format": "date" },
+        "end_date": { "type": "string", "format": "date" },
+        "status": { "type": "string", "enum": ["pending", "confirmed", "cancelled", "completed"] },
+        "created_at": { "type": "string", "format": "date-time" },
+        "notes": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+
+    "activity_log": {
+      "type": "object",
+      "required": ["id", "actor_id", "action", "created_at"],
+      "properties": {
+        "id": { "type": "integer", "minimum": 1 },
+        "actor_id": { "type": ["integer", "null"] },
+        "action": { "type": "string" },
+        "metadata": { "type": ["object", "null"], "additionalProperties": true },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "additionalProperties": false
+    },
+
+    "login_attempt": {
+      "type": "object",
+      "required": ["id", "user_email", "success", "attempt_time"],
+      "properties": {
+        "id": { "type": "integer", "minimum": 1 },
+        "user_email": { "type": "string", "format": "email" },
+        "success": { "type": "boolean" },
+        "attempt_time": { "type": "string", "format": "date-time" },
+        "ip_address": { "type": "string" },
+        "user_agent": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+
+    "setting": {
+      "type": "object",
+      "required": ["key", "value", "updated_at"],
+      "properties": {
+        "key": { "type": "string" },
+        "value": { "type": ["string", "number", "boolean", "object", "array", "null"] },
+        "updated_at": { "type": "string", "format": "date-time" }
+      },
+      "additionalProperties": false
+    }
+  }
+}

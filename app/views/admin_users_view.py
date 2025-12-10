@@ -1,15 +1,16 @@
 # app/views/admin_users_view.py
 
 import flet as ft
+from typing import Optional
 from services.admin_service import AdminService
 from components.admin_utils import format_id, format_name, format_datetime
 from state.session_state import SessionState
 from components.navbar import DashboardNavBar
 from components.footer import Footer
-from components.table_card import TableCard
-from models.user import UserRole
+from models.user import User, UserRole
 from storage.db import get_connection, get_recent_activity
 from datetime import datetime
+from services.refresh_service import register as _register_refresh, unregister as _unregister_refresh, notify as _notify
 
 class AdminUsersView:
 
@@ -34,11 +35,34 @@ class AdminUsersView:
 
         # Container to hold the table so we can refresh it in-place
         self.table_container = ft.Container()
+        # Container to hold pagination so it can be re-rendered when table changes
+        self.pagination_container = ft.Container()
         # pagination
         self.page_index = 0
         self.page_size = 8
         # Tabs state
         self.active_tab = "all"
+
+        # Create/edit user form fields
+        self.user_form_full_name = ft.TextField(label="Full Name", width=360)
+        self.user_form_email = ft.TextField(label="Email", width=360)
+        self.user_form_phone = ft.TextField(label="Phone", width=260)
+        self.user_form_role = ft.Dropdown(
+            label="Role",
+            options=[
+                ft.dropdown.Option("Admin", "admin"),
+                ft.dropdown.Option("Property Manager", "pm"),
+                ft.dropdown.Option("Tenant", "tenant")
+            ],
+            value=UserRole.TENANT.value,
+            width=220
+        )
+        self.user_form_password = ft.TextField(label="Password", password=True, can_reveal_password=True, width=320)
+        self.user_form_active = ft.Switch(label="Active", value=True)
+        self._editing_user: Optional[User] = None
+        # Inline form container (shown instead of modal dialogs)
+        self.inline_form_container = ft.Container(visible=False)
+        self.inline_form_visible = False
 
         # Status and date filters
         self.status_filter2 = ft.Dropdown(
@@ -52,6 +76,19 @@ class AdminUsersView:
         # Use text fields for date input to support a wider range of Flet versions
         self.date_from = ft.TextField(hint_text="From (YYYY-MM-DD)", width=160)
         self.date_to = ft.TextField(hint_text="To (YYYY-MM-DD)", width=160)
+        # Register for global refresh notifications
+        try:
+            _register_refresh(self._on_global_refresh)
+        except Exception:
+            pass
+
+    def _on_global_refresh(self):
+        # Re-render current table when a global refresh is requested
+        try:
+            self._render_table()
+            self.page.update()
+        except Exception:
+            pass
 
     def build(self):
 
@@ -70,7 +107,7 @@ class AdminUsersView:
         # Build header row with search and filters
         filters_row = ft.Row(controls=[self.search_field, self.role_filter, self.status_filter2, self.date_from, self.date_to], spacing=12)
 
-        # Tabs
+        # Tabs (removed Activity Logs - moved to a dedicated Activity Logs view)
         tabs_control = ft.Tabs(
             selected_index=0,
             tabs=[
@@ -79,9 +116,35 @@ class AdminUsersView:
                 ft.Tab(text="Admins"),
                 ft.Tab(text="Property Managers"),
                 ft.Tab(text="Deactivated Users"),
-                ft.Tab(text="Activity Logs"),
             ],
             on_change=self._on_tab_change
+        )
+
+        # Inline form content (rebuilt each build)
+        form_action_label = "Update User" if self._editing_user else "Create User"
+        self.inline_form_container.visible = self.inline_form_visible
+        self.inline_form_container.content = ft.Column(
+            spacing=12,
+            controls=[
+                ft.Row([
+                    ft.Text(form_action_label, size=16, weight=ft.FontWeight.BOLD),
+                    ft.Container(expand=True),
+                    ft.OutlinedButton("Cancel", on_click=lambda e: self._hide_user_form()),
+                    ft.ElevatedButton("Save", icon=ft.Icons.SAVE, on_click=self._submit_user_form),
+                ], alignment=ft.MainAxisAlignment.START),
+                ft.ResponsiveRow(
+                    spacing=12,
+                    run_spacing=12,
+                    controls=[
+                        ft.Container(content=self.user_form_full_name, col={"xs":12, "md":6}),
+                        ft.Container(content=self.user_form_email, col={"xs":12, "md":6}),
+                        ft.Container(content=self.user_form_phone, col={"xs":12, "md":4}),
+                        ft.Container(content=self.user_form_role, col={"xs":12, "md":4}),
+                        ft.Container(content=self.user_form_active, col={"xs":12, "md":4}),
+                        ft.Container(content=self.user_form_password, col={"xs":12, "md":12}),
+                    ],
+                ),
+            ],
         )
 
         return ft.View(
@@ -97,7 +160,20 @@ class AdminUsersView:
                             ft.Text("All Registered Users", size=26, weight= ft.FontWeight.BOLD)
                         ], alignment=ft.MainAxisAlignment.START),
                         ft.Divider(),
-                        tabs_control,
+                        ft.Row(
+                            spacing=12,
+                            alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                            controls=[
+                                ft.Container(expand=True, content=tabs_control),
+                                ft.ElevatedButton(
+                                    "Add User",
+                                    icon=ft.Icons.ADD,
+                                    on_click=lambda e: self._show_user_form()
+                                )
+                            ]
+                        ),
+                        self.inline_form_container,
                         filters_row,
                         ft.Divider(),
                         # Charts area
@@ -105,50 +181,134 @@ class AdminUsersView:
                         ft.Divider(),
                         ft.Container(height=420, content=ft.ListView(expand=True, spacing=8, padding=ft.padding.all(0), controls=[self.table_container])),
                         ft.Divider(),
-                        self._build_pagination()
+                        self.pagination_container
                     ])
                 )
             ]
         )
 
     def _set_active(self, user_id: int, active: bool):
+        # Show confirmation dialog before changing active status
+        from components.dialog_helper import open_dialog, close_dialog
         from services.admin_service import AdminService
-        svc = AdminService()
-        ok = svc.activate_user(user_id) if active else svc.deactivate_user(user_id)
-        if ok:
-            self.page.open(ft.SnackBar(ft.Text('User status updated')))
-        else:
-            self.page.open(ft.SnackBar(ft.Text('Failed to update user')))
-        self.page.go('/admin_users')
+
+        verb = "Activate" if active else "Deactivate"
+        dlg = ft.AlertDialog(
+            title=ft.Text(f"{verb} User", weight=ft.FontWeight.BOLD),
+            content=ft.Text(f"Are you sure you want to {verb.lower()} this user?"),
+            modal=True,
+            actions=[
+                ft.TextButton("Cancel", on_click=lambda e, d=None: close_dialog(self.page, dlg)),
+                ft.ElevatedButton(verb, bgcolor=("#4CAF50" if active else "#D32F2F"), color="white", on_click=lambda e, uid=user_id: self._perform_set_active(uid, active, dlg))
+            ]
+        )
+        open_dialog(self.page, dlg)
+        # Fallback: ensure dialog is set on page.dialog for Flet variants
+        try:
+            if hasattr(self.page, "dialog"):
+                setattr(self.page, "dialog", dlg)
+            self.page.update()
+        except Exception:
+            pass
 
     def _confirm_delete(self, user_id: int):
+        from components.dialog_helper import open_dialog, close_dialog
+
         dlg = ft.AlertDialog(
             title=ft.Text("Confirm Delete"),
             content=ft.Text("Are you sure you want to permanently delete this user? This action cannot be undone."),
             actions=[
-                ft.TextButton("Cancel", on_click=lambda e: self._close_dialog(dlg)),
+                ft.TextButton("Cancel", on_click=lambda e: close_dialog(self.page, dlg)),
                 ft.ElevatedButton("Delete", bgcolor="#D32F2F", color="white", on_click=lambda e, uid=user_id: self._perform_delete(uid, dlg))
             ]
         )
-        self.page.overlay.append(dlg)
-        dlg.open = True
-        self.page.update()
-
-    def _close_dialog(self, dlg: ft.AlertDialog):
-        dlg.open = False
-        self.page.update()
+        open_dialog(self.page, dlg)
+        try:
+            self.page.update()
+        except Exception:
+            pass
 
     def _perform_delete(self, user_id: int, dlg: ft.AlertDialog):
-        dlg.open = False
+        from components.dialog_helper import close_dialog
         svc = AdminService()
         ok = svc.delete_user(user_id)
+        # Close dialog reliably using helper
+        try:
+            close_dialog(self.page, dlg)
+        except Exception:
+            try:
+                dlg.open = False
+            except Exception:
+                pass
+
+        from services.refresh_service import notify as _notify
+
         if ok:
-            self.page.open(ft.SnackBar(ft.Text('User deleted')))
+            try:
+                self.page.open(ft.SnackBar(ft.Text('User deleted')))
+            except Exception:
+                pass
         else:
-            self.page.open(ft.SnackBar(ft.Text('Failed to delete user')))
+            try:
+                self.page.open(ft.SnackBar(ft.Text('Failed to delete user')))
+            except Exception:
+                pass
+
         # refresh
-        self._render_table()
-        self.page.update()
+        try:
+            # Notify other views and re-render current table
+            try:
+                _notify()
+            except Exception:
+                pass
+            self._render_table()
+            self.page.update()
+        except Exception:
+            pass
+
+    def _perform_set_active(self, user_id: int, active: bool, dlg: ft.AlertDialog):
+        """Perform activate/deactivate after confirmation dialog."""
+        from components.dialog_helper import close_dialog
+        svc = AdminService()
+        ok = False
+
+        # Close the dialog first so the scrim disappears even if service call fails
+        try:
+            close_dialog(self.page, dlg)
+        except Exception:
+            try:
+                dlg.open = False
+            except Exception:
+                pass
+
+        try:
+            ok = svc.activate_user(user_id) if active else svc.deactivate_user(user_id)
+        except Exception:
+            ok = False
+
+        from services.refresh_service import notify as _notify
+
+        if ok:
+            try:
+                self.page.open(ft.SnackBar(ft.Text('User status updated')))
+            except Exception:
+                pass
+        else:
+            try:
+                self.page.open(ft.SnackBar(ft.Text('Failed to update user')))
+            except Exception:
+                pass
+
+        # Re-render the table in-place so current tab updates immediately
+        try:
+            try:
+                _notify()
+            except Exception:
+                pass
+            self._render_table()
+            self.page.update()
+        except Exception:
+            pass
 
     # --------------------
     # Filtering / rendering
@@ -191,8 +351,11 @@ class AdminUsersView:
         if q:
             users = [u for u in users if (getattr(u, 'full_name', '') or '').lower().find(q) != -1 or (getattr(u, 'email', '') or '').lower().find(q) != -1]
 
-        # Pagination slice
+        # Pagination slice: clamp page index so tab switches don't leave invalid page indices
         total = len(users)
+        total_pages = max(1, (total + self.page_size - 1) // self.page_size)
+        if self.page_index >= total_pages:
+            self.page_index = max(0, total_pages - 1)
         start = self.page_index * self.page_size
         end = start + self.page_size
         page_items = users[start:end]
@@ -209,13 +372,35 @@ class AdminUsersView:
             activate_btn = ft.ElevatedButton("Activate", on_click=lambda e, _id=uid: self._set_active(_id, True))
             deactivate_btn = ft.OutlinedButton("Deactivate", on_click=lambda e, _id=uid: self._set_active(_id, False))
             delete_btn = ft.IconButton(ft.Icons.DELETE, tooltip="Delete user", on_click=lambda e, _id=uid: self._confirm_delete(_id))
+            edit_btn = ft.IconButton(ft.Icons.EDIT, tooltip="Edit user", on_click=lambda e, user=u: self._show_user_form(user))
             rows.append(ft.DataRow(cells=[
                 ft.DataCell(ft.Text(format_id('U', uid))),
                 ft.DataCell(ft.Text(format_name(name))),
                 ft.DataCell(ft.Text(email)),
                 ft.DataCell(ft.Text((role or '').title())),
-                ft.DataCell(ft.Row([activate_btn, deactivate_btn, delete_btn], spacing=6))
+                ft.DataCell(ft.Row([edit_btn, activate_btn, deactivate_btn, delete_btn], spacing=6))
             ]))
+
+        # If nothing to show, display friendly empty state
+        if not page_items:
+            self.table_container.content = ft.Container(
+                content=ft.Column(spacing=8, horizontal_alignment=ft.CrossAxisAlignment.CENTER, controls=[
+                    ft.Icon(ft.Icons.INBOX, size=48, color=ft.Colors.GREY),
+                    ft.Text("No Data Yet", size=14, color=ft.Colors.GREY),
+                    ft.Text("There are no results for the selected filters.", size=12, color=ft.Colors.GREY_600),
+                ]),
+                padding=ft.padding.symmetric(vertical=24, horizontal=8),
+                alignment=ft.alignment.center,
+                expand=True,
+            )
+            # Ensure pagination reflects current total/pages even when there are
+            # no items on the current page (so buttons and page number update).
+            try:
+                self.pagination_container.content = self._build_pagination()
+            except Exception:
+                # In case pagination container hasn't been created yet (older calls), ignore.
+                pass
+            return
 
         table = ft.DataTable(
             columns=[
@@ -226,15 +411,104 @@ class AdminUsersView:
                 ft.DataColumn(ft.Text("Actions")),
             ],
             rows=rows,
+            column_spacing=16,
+            expand=True,
             border=ft.border.all(1, "#E0E0E0"),
-            heading_row_color="#F5F5F5",
-            column_spacing=12,
-            expand=True
+            heading_row_color="#F9F9F9",
+            heading_row_height=48,
         )
 
         # Use reusable TableContainer component to wrap the DataTable
-        tc = TableCard(title="Users", table=table, actions=[], width=1200, expand=True)
-        self.table_container.content = tc.build()
+        # Use the simpler DataTable layout directly inside a container (no TableCard)
+        self.table_container.content = ft.Container(content=table, expand=True, padding=ft.padding.only(top=6, bottom=6))
+        # Update pagination to reflect the current filtered dataset and page index
+        try:
+            self.pagination_container.content = self._build_pagination()
+        except Exception:
+            pass
+
+    def _reset_form_fields(self):
+        self._editing_user = None
+        self.user_form_full_name.value = ""
+        self.user_form_email.value = ""
+        self.user_form_phone.value = ""
+        self.user_form_role.value = UserRole.TENANT.value
+        self.user_form_active.value = True
+        self.user_form_password.value = ""
+        self.user_form_password.hint_text = "Set a password for the new user"
+
+    def _show_user_form(self, user: Optional[User] = None):
+        # Populate fields for edit or reset for create
+        if user:
+            self._editing_user = user
+            self.user_form_full_name.value = user.full_name or ""
+            self.user_form_email.value = user.email or ""
+            self.user_form_phone.value = user.phone or ""
+            self.user_form_role.value = user.role.value if hasattr(user, 'role') else UserRole.TENANT.value
+            self.user_form_active.value = getattr(user, 'is_active', True)
+            self.user_form_password.value = ""
+            self.user_form_password.hint_text = "Leave blank to keep current password"
+        else:
+            self._reset_form_fields()
+
+        self.inline_form_visible = True
+        self.inline_form_container.visible = True
+        try:
+            self.page.update()
+        except Exception:
+            pass
+
+    def _hide_user_form(self, *_):
+        self.inline_form_visible = False
+        self.inline_form_container.visible = False
+        self._reset_form_fields()
+        try:
+            self.page.update()
+        except Exception:
+            pass
+
+    def _submit_user_form(self, _):
+        full_name = (self.user_form_full_name.value or "").strip()
+        email = (self.user_form_email.value or "").strip()
+        role_value = self.user_form_role.value or UserRole.TENANT.value
+        phone = (self.user_form_phone.value or "").strip() or None
+        is_active = bool(self.user_form_active.value)
+        password = (self.user_form_password.value or "").strip()
+
+        # Validate required fields
+        if not full_name or not email or not role_value:
+            self.page.open(ft.SnackBar(ft.Text("Name, email, and role are required.")))
+            return
+
+        # Validate password for new users
+        if not self._editing_user and not password:
+            self.page.open(ft.SnackBar(ft.Text("Password is required for new users.")))
+            return
+
+        # Perform save inline (no modal)
+        if self._editing_user:
+            user_id = getattr(self._editing_user, 'id', None)
+            if not user_id:
+                self.page.open(ft.SnackBar(ft.Text("Selected user is invalid.")))
+                return
+            ok, msg = self.admin_service.update_user_account(user_id, full_name, email, role_value, is_active, phone)
+            if ok and password:
+                self.admin_service.reset_user_password(user_id, password)
+        else:
+            ok, msg = self.admin_service.create_user_account(full_name, email, role_value, password, is_active)
+
+        if ok:
+            self.page.open(ft.SnackBar(ft.Text(msg)))
+            try:
+                from services.refresh_service import notify as _notify
+                _notify()
+            except Exception:
+                pass
+            self._hide_user_form()
+            self._render_table()
+            self.page.update()
+        else:
+            self.page.open(ft.SnackBar(ft.Text(msg)))
 
     def _build_pagination(self):
         # compute total items according to current filters (use same logic as _render_table)
@@ -285,7 +559,7 @@ class AdminUsersView:
     # --------------------
     # Data access helpers
     # --------------------
-    def _fetch_users(self, role: UserRole = None, active: int = None, date_from: datetime = None, date_to: datetime = None, tab: str = 'all'):
+    def _fetch_users(self, role: Optional[UserRole] = None, active: Optional[int] = None, date_from: Optional[str] = None, date_to: Optional[str] = None, tab: str = 'all'):
         """Query users table with optional filters and return list[User]."""
         conn = get_connection()
         cur = conn.cursor()
@@ -346,60 +620,34 @@ class AdminUsersView:
     # --------------------
     def _on_tab_change(self, e):
         idx = e.control.selected_index
-        mapping = {0: 'all', 1: 'tenants', 2: 'admins', 3: 'pms', 4: 'deactivated', 5: 'activity'}
+        mapping = {0: 'all', 1: 'tenants', 2: 'admins', 3: 'pms', 4: 'deactivated'}
         self.active_tab = mapping.get(idx, 'all')
-        # If switching to activity logs, render activity instead
-        if self.active_tab == 'activity':
-            self._render_activity_logs()
+
+        # Update filters to match the selected tab so state from a
+        # previously-selected tab doesn't leak into the next one.
+        if self.active_tab == 'tenants':
+            self.role_filter.value = 'Tenants'
+            self.status_filter2.value = 'All'
+        elif self.active_tab == 'admins':
+            self.role_filter.value = 'Admins'
+            self.status_filter2.value = 'All'
+        elif self.active_tab == 'pms':
+            self.role_filter.value = 'PMs'
+            self.status_filter2.value = 'All'
+        elif self.active_tab == 'deactivated':
+            # Show deactivated users regardless of role
+            self.role_filter.value = 'All'
+            self.status_filter2.value = 'Deactivated'
         else:
-            # update role dropdown to reflect tab selection
-            if self.active_tab == 'tenants':
-                self.role_filter.value = 'Tenants'
-            elif self.active_tab == 'admins':
-                self.role_filter.value = 'Admins'
-            elif self.active_tab == 'pms':
-                self.role_filter.value = 'PMs'
-            elif self.active_tab == 'deactivated':
-                self.status_filter2.value = 'Deactivated'
-            else:
-                self.role_filter.value = 'All'
-                self.status_filter2.value = 'All'
-            self._render_table()
+            self.role_filter.value = 'All'
+            self.status_filter2.value = 'All'
+
+        # Reset pagination when switching tabs and re-render
+        self.page_index = 0
+        self._render_table()
         self.page.update()
 
-    def _render_activity_logs(self):
-        # Use storage helper to get recent activity
-        logs = get_recent_activity(50)
-        rows = []
-        for r in logs:
-            rid = r['id']
-            user = (r['user_full_name'] if 'user_full_name' in r.keys() and r['user_full_name'] else (r['user_email'] if 'user_email' in r.keys() and r['user_email'] else 'System'))
-            action = (r['action'] if 'action' in r.keys() else '')
-            details = (r['details'] if 'details' in r.keys() else '') or ''
-            created = (format_datetime(r['created_at']) if 'created_at' in r.keys() and r['created_at'] else '')
-            rows.append(ft.DataRow(cells=[
-                ft.DataCell(ft.Text(str(rid))),
-                ft.DataCell(ft.Text(user)),
-                ft.DataCell(ft.Text(action)),
-                ft.DataCell(ft.Text(details)),
-                ft.DataCell(ft.Text(created)),
-            ]))
-
-        table = ft.DataTable(
-            columns=[
-                ft.DataColumn(ft.Text("ID")),
-                ft.DataColumn(ft.Text("User")),
-                ft.DataColumn(ft.Text("Action")),
-                ft.DataColumn(ft.Text("Details")),
-                ft.DataColumn(ft.Text("When")),
-            ],
-            rows=rows,
-            border=ft.border.all(1, "#E0E0E0"),
-            heading_row_color="#F5F5F5",
-            column_spacing=12,
-            expand=True
-        )
-        self.table_container.content = ft.Container(content=table, width=1200, expand=True)
+        # Users view continues below. Activity-logs table removed from here.
 
     def _build_registration_chart_container(self):
         # Build a small LineChart with registrations per month (last 6 months)
@@ -420,9 +668,16 @@ class AdminUsersView:
         points = []
         labels = []
         for i, row in enumerate(data, start=1):
-            m = row[0]
-            v = int(row[1])
-            labels.append((i, m[5:]))
+            # row[0] is expected to be a string like 'YYYY-MM' but can be None
+            m = row[0] if row and row[0] is not None else ""
+            try:
+                v = int(row[1] if row and row[1] is not None else 0)
+            except Exception:
+                v = 0
+
+            # Safe slice: if month string is shorter than expected, fall back to whole string
+            lbl = (m[5:] if isinstance(m, str) and len(m) >= 6 else (m or ""))
+            labels.append((i, lbl))
             points.append(ft.LineChartDataPoint(x=i, y=v, tooltip=str(v)))
 
         bottom_axis = ft.ChartAxis(labels=[ft.ChartAxisLabel(value=i, label=ft.Text(lbl, size=10)) for i, lbl in labels], labels_size=10)

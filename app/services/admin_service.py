@@ -1,14 +1,22 @@
 # app/services/admin_service.py
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Tuple
+import os
+import sys
+# Ensure top-level `storage` package is importable when importing from `app.services`
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from storage.db import (
     get_connection,
     deactivate_user as db_deactivate_user,
     activate_user as db_activate_user,
     delete_user as db_delete_user,
     change_listing_status,
+    create_user,
+    update_user_account,
+    update_user_password as db_update_user_password,
 )
 from models.user import User, UserRole
 from models.listing import Listing
+from services.refresh_service import notify as _notify_refresh
 
 class AdminService:
     """Service for admin-related operations"""
@@ -25,6 +33,14 @@ class AdminService:
         conn.close()
         return [User.from_db_row(row) for row in rows]
 
+    def get_all_users_by_role(self, role_string: str) -> List[User]:
+        """Get all users by role (string). Convenience method for UI."""
+        try:
+            role_enum = UserRole(role_string)
+            return self.get_all_users(role_enum)
+        except (ValueError, KeyError):
+            return []
+
     def get_user_by_id(self, user_id: int) -> Optional[User]:
         conn = get_connection()
         cursor = conn.cursor()
@@ -34,14 +50,87 @@ class AdminService:
         return User.from_db_row(row) if row else None
 
     def deactivate_user(self, user_id: int) -> bool:
-        return db_deactivate_user(user_id)
+        ok = db_deactivate_user(user_id)
+        if ok:
+            try:
+                _notify_refresh()
+            except Exception:
+                pass
+        return ok
 
     def activate_user(self, user_id: int) -> bool:
-        return db_activate_user(user_id)
+        ok = db_activate_user(user_id)
+        if ok:
+            try:
+                _notify_refresh()
+            except Exception:
+                pass
+        return ok
 
     def delete_user(self, user_id: int) -> bool:
         """Permanently remove a user from the database (admin action)."""
-        return db_delete_user(user_id)
+        ok = db_delete_user(user_id)
+        if ok:
+            try:
+                _notify_refresh()
+            except Exception:
+                pass
+        return ok
+
+    def create_user_account(self, full_name: str, email: str, role: str, password: str, is_active: bool = True) -> tuple[bool, str]:
+        """Create a user account as an admin."""
+        if not full_name or not email or not role or not password:
+            return False, "All fields are required"
+
+        success, msg = create_user(full_name, email, password, role, 1 if is_active else 0)
+        if success:
+            try:
+                _notify_refresh()
+            except Exception:
+                pass
+        return success, msg
+
+    def update_user_account(self, user_id: int, full_name: str, email: str, role: str, is_active: bool = True, phone: Optional[str] = None) -> tuple[bool, str]:
+        """Update user metadata as an admin."""
+        # Capture any stderr output from the DB adapter so we can return a
+        # helpful message to the UI instead of a generic failure string.
+        import io
+        import contextlib
+        buf = io.StringIO()
+        try:
+            with contextlib.redirect_stderr(buf):
+                ok = update_user_account(user_id, full_name, email, role, 1 if is_active else 0, phone)
+        except Exception as e:
+            # If the adapter raised, capture message and return
+            msg = str(e)
+            return False, msg
+
+        stderr_out = buf.getvalue().strip()
+        if ok:
+            try:
+                _notify_refresh()
+            except Exception:
+                pass
+            return True, "User updated successfully"
+
+        # Prefer the adapter's stderr message if present
+        if stderr_out:
+            return False, stderr_out
+
+        return False, "Failed to update user"
+
+    def reset_user_password(self, user_id: int, new_password: str) -> tuple[bool, str]:
+        """Reset password for a user."""
+        if not new_password:
+            return False, "Password cannot be empty"
+        ok = db_update_user_password(user_id, new_password)
+        if ok:
+            try:
+                _notify_refresh()
+            except Exception:
+                pass
+            return True, "Password updated"
+        return False, "Failed to update password"
 
     def approve_pm(self, user_id: int) -> bool:
         conn = get_connection()
@@ -50,7 +139,13 @@ class AdminService:
         conn.commit()
         affected = cursor.rowcount
         conn.close()
-        return affected > 0
+        ok = affected > 0
+        if ok:
+            try:
+                _notify_refresh()
+            except Exception:
+                pass
+        return ok
 
     def reject_pm(self, user_id: int) -> bool:
         conn = get_connection()
@@ -59,7 +154,13 @@ class AdminService:
         conn.commit()
         affected = cursor.rowcount
         conn.close()
-        return affected > 0
+        ok = affected > 0
+        if ok:
+            try:
+                _notify_refresh()
+            except Exception:
+                pass
+        return ok
 
     # ------------------ LISTING MANAGEMENT ------------------
     def get_all_listings(self, status: Optional[str] = None) -> List[Listing]:
@@ -75,10 +176,22 @@ class AdminService:
         return [Listing.from_db_row(row) for row in rows]
 
     def approve_listing(self, listing_id: int) -> bool:
-        return change_listing_status(listing_id, "approved")
+        ok = change_listing_status(listing_id, "approved")
+        if ok:
+            try:
+                _notify_refresh()
+            except Exception:
+                pass
+        return ok
 
     def reject_listing(self, listing_id: int) -> bool:
-        return change_listing_status(listing_id, "rejected")
+        ok = change_listing_status(listing_id, "rejected")
+        if ok:
+            try:
+                _notify_refresh()
+            except Exception:
+                pass
+        return ok
 
     # ------------------ DASHBOARD ANALYTICS ------------------
     def get_stats(self) -> Dict[str, int]:
@@ -115,6 +228,17 @@ class AdminService:
 
         cursor.execute("SELECT COUNT(*) as count FROM reports")
         stats['total_reports'] = cursor.fetchone()['count']
+
+        # Count admin users explicitly so UI can display admins separately
+        try:
+            cursor.execute("SELECT COUNT(*) as count FROM users WHERE lower(role) LIKE '%admin%'")
+            stats['total_admins'] = cursor.fetchone()['count']
+        except Exception:
+            # Fallback: derive admins by subtracting known roles from total_users
+            try:
+                stats['total_admins'] = int(stats.get('total_users', 0)) - int(stats.get('total_pms', 0)) - int(stats.get('total_tenants', 0))
+            except Exception:
+                stats['total_admins'] = 0
 
         conn.close()
         return stats
@@ -186,3 +310,136 @@ class AdminService:
             return [dict(r) for r in rows]
         finally:
             conn.close()
+
+    # --------- LISTING MANAGEMENT (Admin) ---------
+    def create_listing_admin(self, pm_id: int, address: str, price: float, description: str, lodging_details: str, status: str = "pending") -> Tuple[bool, str, Optional[int]]:
+        """Admin can create listings for any PM and set initial status."""
+        if not address or not description or price <= 0:
+            return False, "Address, description, and price are required", None
+
+        from services.listing_service import ListingService
+        success, msg, listing_id = ListingService.create_new_listing(
+            pm_id, address, price, description, lodging_details, []
+        )
+        if success and listing_id and status != "pending":
+            ok = change_listing_status(listing_id, status)
+            if not ok:
+                return False, "Listing created but status update failed", listing_id
+        return success, msg, listing_id if success else None
+
+    def update_listing_admin(self, listing_id: int, address: str, price: float, description: str, lodging_details: str, status: str, pm_id: Optional[int] = None) -> Tuple[bool, str]:
+        """Admin can update all listing fields including owner and status."""
+        from services.listing_service import ListingService
+        return ListingService.update_existing_listing_admin(listing_id, address, price, description, lodging_details, status, pm_id)
+
+    # --------- RESERVATION MANAGEMENT (Admin) ---------
+    def create_reservation_admin(self, listing_id: int, tenant_id: int, start_date: str, end_date: str, status: str = "pending") -> Tuple[bool, str, Optional[int]]:
+        """Admin can create reservations and set status directly."""
+        from services.reservation_service import ReservationService
+        success, msg, res_id = ReservationService().create_reservation_admin(listing_id, tenant_id, start_date, end_date, status)
+        return success, msg, res_id
+
+    def update_reservation_admin(self, reservation_id: int, listing_id: int, tenant_id: int, start_date: str, end_date: str, status: str) -> Tuple[bool, str]:
+        """Admin can update all reservation fields."""
+        from services.reservation_service import ReservationService
+        return ReservationService().update_reservation_admin(reservation_id, listing_id, tenant_id, start_date, end_date, status)
+
+    # --------- PAYMENT MANAGEMENT (Admin) ---------
+    def get_all_payments_admin(self, status: Optional[str] = None) -> List[Dict]:
+        """Get all payments with optional status filter."""
+        from storage.db import get_all_payments_admin
+        return get_all_payments_admin(status)
+
+    def process_refund(self, payment_id: int, refund_amount: float, refund_reason: str) -> Tuple[bool, str]:
+        """Process a refund for a payment."""
+        from storage.db import process_payment_refund
+        success, msg = process_payment_refund(payment_id, refund_amount, refund_reason)
+        if success:
+            try:
+                _notify_refresh()
+            except Exception:
+                pass
+        return success, msg
+
+    def update_payment_status(self, payment_id: int, new_status: str, notes: Optional[str] = None) -> Tuple[bool, str]:
+        """Update payment status."""
+        from storage.db import update_payment_status
+        success, msg = update_payment_status(payment_id, new_status, notes)
+        if success:
+            try:
+                _notify_refresh()
+            except Exception:
+                pass
+        return success, msg
+
+    def get_payment_statistics(self) -> Dict:
+        """Get payment statistics and insights."""
+        from storage.db import get_payment_statistics
+        return get_payment_statistics()
+
+    # ------------------ TREND / PERIOD HELPERS ------------------
+    def _count_rows_in_period(self, table: str, days: int = 30, offset_days: int = 0, date_column: str = 'created_at', where: str = None) -> int:
+        """Count rows in a given table for a period defined by days and optional offset.
+
+        Example: days=30, offset_days=0 => last 30 days; offset_days=30 => 30-60 days ago.
+        """
+        conn = get_connection()
+        cursor = conn.cursor()
+        try:
+            if offset_days <= 0:
+                # current period: from date('now', '-{days} days') to now
+                q = f"SELECT COUNT(*) as count FROM {table} WHERE {date_column} >= date('now', '-{days} days')"
+            else:
+                # previous window: between date('now', '-{offset_days + days} days') and date('now','-{offset_days} days')
+                q = f"SELECT COUNT(*) as count FROM {table} WHERE {date_column} >= date('now', '-{offset_days + days} days') AND {date_column} < date('now', '-{offset_days} days')"
+            if where:
+                q += f" AND ({where})"
+            cursor.execute(q)
+            row = cursor.fetchone()
+            return int(row['count'] if isinstance(row, dict) and 'count' in row else (row[0] if row else 0))
+        finally:
+            conn.close()
+
+    def get_new_users_count(self, days: int = 30, offset_days: int = 0) -> int:
+        return self._count_rows_in_period('users', days=days, offset_days=offset_days, date_column='created_at')
+
+    def get_new_listings_count(self, days: int = 30, offset_days: int = 0, status: str = None) -> int:
+        where = None
+        if status:
+            where = f"status='{status}'"
+        return self._count_rows_in_period('listings', days=days, offset_days=offset_days, date_column='created_at', where=where)
+
+    def get_new_reservations_count(self, days: int = 30, offset_days: int = 0) -> int:
+        return self._count_rows_in_period('reservations', days=days, offset_days=offset_days, date_column='created_at')
+
+    def get_new_reports_count(self, days: int = 30, offset_days: int = 0) -> int:
+        return self._count_rows_in_period('reports', days=days, offset_days=offset_days, date_column='created_at')
+
+    def get_pending_pms_count_period(self, days: int = 30, offset_days: int = 0) -> int:
+        # Count pending PM verifications created within the period
+        where = "(lower(role) LIKE '%pm%' OR lower(role) LIKE '%property%' OR lower(role) LIKE '%manager%') AND is_verified=0"
+        return self._count_rows_in_period('users', days=days, offset_days=offset_days, date_column='created_at', where=where)
+
+    @staticmethod
+    def compute_trend(current: int, previous: int, precision: int = 0) -> tuple[int, bool]:
+        """Compute an absolute percent change and direction.
+
+        Returns (trend_value, trend_up) where trend_value is an int percent (absolute),
+        and trend_up is True when current >= previous.
+        When previous == 0 and current > 0, returns 100 (semantic choice).
+        """
+        try:
+            cur = int(current or 0)
+            prev = int(previous or 0)
+        except Exception:
+            return 0, False
+
+        if prev == 0:
+            if cur == 0:
+                return 0, False
+            return 100, True
+
+        delta = cur - prev
+        pct = (delta / prev) * 100.0
+        rounded = int(round(abs(pct), precision))
+        return rounded, (pct >= 0)

@@ -4,6 +4,7 @@ SignupBanner component
 """
 import flet as ft
 from typing import Optional, Callable
+from config.colors import COLORS
 
 
 class SignupBanner:
@@ -13,6 +14,7 @@ class SignupBanner:
         self.page = page
         self.on_create_click = on_create_click
         self.on_signin_click = on_signin_click
+        self.colors = COLORS
 
     def build(self) -> ft.Container:
         """Build and return the banner container control"""
@@ -43,34 +45,34 @@ class SignupBanner:
         banner = ft.Container(
             margin=ft.margin.only(top=20),
             padding=25,
-            bgcolor="#fff3e0",
+            bgcolor=self.colors["card_bg"],
             border_radius=10,
             content=ft.Column(
                 horizontal_alignment=ft.CrossAxisAlignment.CENTER,
                 spacing=15,
                 controls=[
-                    ft.Icon(ft.Icons.STARS, size=40, color="#f57c00"),
+                    ft.Icon(ft.Icons.STARS, size=40, color=self.colors["secondary"]),
                     ft.Text("📝 Ready to Find Your Perfect Home?", size=20, weight=ft.FontWeight.BOLD),
-                    ft.Text("Create a free account to unlock these features:", size=14, color="#e65100"),
+                    ft.Text("Create a free account to unlock these features:", size=14, color=self.colors["text_dark"]),
                     ft.Row(
                         alignment=ft.MainAxisAlignment.CENTER,
                         wrap=True,
                         spacing=20,
                         controls=[
                             ft.Column([
-                                ft.Icon(ft.Icons.BOOKMARK, color="#f57c00"),
+                                ft.Icon(ft.Icons.BOOKMARK, color=self.colors["secondary"]),
                                 ft.Text("Save Favorites", size=12, text_align=ft.TextAlign.CENTER)
                             ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=5),
                             ft.Column([
-                                ft.Icon(ft.Icons.CALENDAR_TODAY, color="#f57c00"),
+                                ft.Icon(ft.Icons.CALENDAR_TODAY, color=self.colors["secondary"]),
                                 ft.Text("Reserve Now", size=12, text_align=ft.TextAlign.CENTER)
                             ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=5),
                             ft.Column([
-                                ft.Icon(ft.Icons.MESSAGE, color="#f57c00"),
+                                ft.Icon(ft.Icons.MESSAGE, color=self.colors["secondary"]),
                                 ft.Text("Chat with Owners", size=12, text_align=ft.TextAlign.CENTER)
                             ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=5),
                             ft.Column([
-                                ft.Icon(ft.Icons.NOTIFICATIONS, color="#f57c00"),
+                                ft.Icon(ft.Icons.NOTIFICATIONS, color=self.colors["secondary"]),
                                 ft.Text("Get Updates", size=12, text_align=ft.TextAlign.CENTER)
                             ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=5),
                         ]
@@ -83,7 +85,7 @@ class SignupBanner:
                                 "Create Free Account",
                                 icon=ft.Icons.PERSON_ADD,
                                 on_click=_create_click,
-                                bgcolor="#ff9800",
+                                bgcolor=self.colors["focus"],
                                 color="white",
                                 height=50,
                                 style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=8))
