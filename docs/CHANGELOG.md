@@ -3,6 +3,22 @@
 All notable changes to this project will be documented in this file.
 
 ---
+
+## [2.5.2] - 2025-12-11 (Tercero)
+
+### Removed
+- Removed multiple legacy documentation files from `docs/` to declutter the repository, including architecture, security, payments, system settings, and various implementation and status reports.
+- Removed `docs/architecture.puml` and `docs/campuskubo_schema.json`.
+- Removed unused sample images from `assets/uploads/` (`angel-luciano--hWwL0n3_As-unsplash.jpg`) and `assets/uploads/profile_photos/` (`profile_2.png`, `profile_3.png`, `profile_5.png`).
+
+### Changed
+- Updated `README.md` version to reflect documentation consolidation and repository cleanup in v2.5.2.
+
+### Added
+- Added `docs/README.md` as a consolidated documentation for the project.
+
+---
+
 ## [2.5.1] - 2025-12-08 (Pontanares) 
  
 ### Added  

@@ -1,10 +1,10 @@
-# CampusKubo — Emerging Tech & Architecture README
+# CampusKubo
 
 This document records the features and design notes that are currently present in this repository, and briefly lists design proposals that are not implemented here.
 
 Project Overview & Problem Statement
 - Project: CampusKubo — Boarding & Bedspace Finder for Students
-- Problem statement: Provide a lightweight local-development-friendly application to discover and reserve student boarding/bedspace, and tools for property managers to list and manage properties.
+- Problem statement: Provide a lightweight web application to discover and reserve student boarding/bedspace, and tools for property managers to list and manage properties.
 
 What this repository currently implements (facts)
 - UI: built with Flet — views, components, and navigation are implemented under `app/views` and `app/components`.
@@ -35,18 +35,22 @@ Scope Table (current state)
 
 Architecture (what's in the repo)
 ```
-  [Flet UI (Desktop/Web client)]
-           |
-           v
-  [Views & Components] --- [SessionState & Navigation]
-           |
-           v
-  [Services Layer] (auth, listing, reservation, notification)
-           |
-           v
-  [Storage Layer]
-    - SQLite database in `app/storage/`
-    - Local uploads in `assets/uploads/` (dev-focused)
+    [Flet UI (Desktop / Web client)]
+                  |
+                  v
+    [Views & Components (Flet)]  <--->  [SessionState & Navigation]
+                  |
+                  v
+    [Services Layer]
+      - auth_service
+      - listing_service
+      - reservation_service
+      - notification_service
+                  |
+                  v
+    [Storage Layer]
+      - SQLite (app/storage/campuskubo.db)
+      - Local uploads (assets/uploads/)
 ```
 
 Data model and schema
@@ -70,24 +74,141 @@ pip install -r requirements.txt
 pytest -q
 ```
 
-**Data Model (overview)**
-- Primary entities (simplified):
+**Data Model**
+- Primary entities:
   - Users: { id, email, password_hash, role, full_name, deleted_at, created_at }
   - Listings: { id, title, address, price, description, owner_id, status, amenities, image_urls, availability_status, created_at }
   - Reservations: { id, listing_id, user_id, start_date, end_date, status, created_at }
   - Activity / Audit logs: { id, actor_id, action, metadata, created_at }
 
-Example JSON schema snippets:
 ```
-Listing {
-  "id": 123,
-  "title": "1BR near University",
-  "address": "123 Campus St",
-  "price": 6000,
-  "amenities": ["wifi","fan","private_bath"],
-  "owner_id": 7,
-  "status": "approved",
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CampusKubo Data Model Schema",
+  "description": "Comprehensive JSON Schema describing the primary data entities used by CampusKubo.",
+  "type": "object",
+  "properties": {
+    "users": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/user" }
+    },
+    "listings": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/listing" }
+    },
+    "reservations": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/reservation" }
+    },
+    "activity_logs": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/activity_log" }
+    },
+    "login_attempts": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/login_attempt" }
+    },
+    "settings": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/definitions/setting" }
+    }
+  },
+  "required": ["users", "listings"],
+  "definitions": {
+    "user": {
+      "type": "object",
+      "required": ["id", "email", "password_hash", "role", "created_at"],
+      "properties": {
+        "id": { "type": "integer", "minimum": 1 },
+        "email": { "type": "string", "format": "email" },
+        "password_hash": { "type": "string" },
+        "role": { "type": "string", "enum": ["visitor", "tenant", "pm", "admin"] },
+        "full_name": { "type": "string" },
+        "deleted_at": { "type": ["string", "null"], "format": "date-time" },
+        "created_at": { "type": "string", "format": "date-time" },
+        "last_activity": { "type": ["string", "null"], "format": "date-time" },
+        "profile_photo_url": { "type": "string", "format": "uri" }
+      },
+      "additionalProperties": false
+    },
+
+    "listing": {
+      "type": "object",
+      "required": ["id", "owner_id", "title", "address", "price", "status", "created_at"],
+      "properties": {
+        "id": { "type": "integer", "minimum": 1 },
+        "owner_id": { "type": "integer", "minimum": 1 },
+        "title": { "type": "string", "minLength": 1 },
+        "address": { "type": "string" },
+        "description": { "type": "string" },
+        "price": { "type": "number", "minimum": 0 },
+        "amenities": { "type": "array", "items": { "type": "string" }, "default": [] },
+        "image_urls": { "type": "array", "items": { "type": "string", "format": "uri" }, "default": [] },
+        "status": { "type": "string", "enum": ["draft", "pending", "approved", "rejected", "archived"] },
+        "availability_status": { "type": "string", "enum": ["Available", "Reserved", "Unavailable"], "default": "Available" },
+        "lodging_details": { "type": "string" },
+        "created_at": { "type": "string", "format": "date-time" },
+        "updated_at": { "type": ["string", "null"], "format": "date-time" }
+      },
+      "additionalProperties": false
+    },
+
+    "reservation": {
+      "type": "object",
+      "required": ["id", "listing_id", "user_id", "start_date", "end_date", "status", "created_at"],
+      "properties": {
+        "id": { "type": "integer", "minimum": 1 },
+        "listing_id": { "type": "integer", "minimum": 1 },
+        "user_id": { "type": "integer", "minimum": 1 },
+        "start_date": { "type": "string", "format": "date" },
+        "end_date": { "type": "string", "format": "date" },
+        "status": { "type": "string", "enum": ["pending", "confirmed", "cancelled", "completed"] },
+        "created_at": { "type": "string", "format": "date-time" },
+        "notes": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+
+    "activity_log": {
+      "type": "object",
+      "required": ["id", "actor_id", "action", "created_at"],
+      "properties": {
+        "id": { "type": "integer", "minimum": 1 },
+        "actor_id": { "type": ["integer", "null"] },
+        "action": { "type": "string" },
+        "metadata": { "type": ["object", "null"], "additionalProperties": true },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "additionalProperties": false
+    },
+
+    "login_attempt": {
+      "type": "object",
+      "required": ["id", "user_email", "success", "attempt_time"],
+      "properties": {
+        "id": { "type": "integer", "minimum": 1 },
+        "user_email": { "type": "string", "format": "email" },
+        "success": { "type": "boolean" },
+        "attempt_time": { "type": "string", "format": "date-time" },
+        "ip_address": { "type": "string" },
+        "user_agent": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+
+    "setting": {
+      "type": "object",
+      "required": ["key", "value", "updated_at"],
+      "properties": {
+        "key": { "type": "string" },
+        "value": { "type": ["string", "number", "boolean", "object", "array", "null"] },
+        "updated_at": { "type": "string", "format": "date-time" }
+      },
+      "additionalProperties": false
+    }
+  }
 }
+
 ```
 
 ERD summary (text): Users 1--* Listings (owner relationship), Listings 1--* Reservations, Users 1--* Reservations. Activity logs reference users and objects by id.
@@ -172,5 +293,4 @@ Contribution Matrix (example):
   - Implement a microservice for real-time events and horizontal scaling
   - Add optional on-device ML models for image tagging or lightweight inference
   - Add analytic pipelines (ETL) for aggregated admin dashboards
-
 ---
