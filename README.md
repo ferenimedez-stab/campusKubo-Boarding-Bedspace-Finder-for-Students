@@ -320,6 +320,48 @@ Through this experience, I learned how important it is to start with a proper me
 
 AI assistance was of assistance in building this system. It was used in adapting chart examples (PieChart, BarChart, LineChart) from Flet docs, drafting code snippets, report texts, and test files, as well as in debugging. External templates consulted: Flet PieChart, BarChart, LineChart (links below). Nonetheless, all AI-generated outputs were reviewed and validated by the project authors.
 
+<<<<<<< HEAD
 Flet PieChart: https://flet.dev/docs/controls/piechart/
 Flet BarChart: https://flet.dev/docs/controls/barchart
 Flet LineChart: https://flet.dev/docs/controls/linechart
+=======
+## 👥 Team
+
+**BoardGirls Team**
+- Product Lead / Vision & Feature Prioritization
+- UI/UX & Accessibility Designer
+- Lead Developer (Flet Architecture)
+- Data & Integration Engineer
+- QA / Test Coordinator
+- Documentation & Release Manager
+
+---
+
+## 📄 License
+
+This project is developed for academic purposes as part of CCCS 106 (Application Development and Emerging Technologies) and CS 3110 (Software Engineering) joint collaboration.
+
+---
+
+## 🙏 Acknowledgements
+
+- Developed by **BoardGirls** team
+- Built with [Flet Framework](https://flet.dev/)
+- Inspired by student accommodation platforms
+- Special thanks to our instructors and collaborators
+
+---
+
+## 📞 Support
+
+For questions or issues:
+1. Check existing issues in the repository
+2. Create a new issue with a clear description
+3. Contact the team through the course channels
+
+---
+
+**Last Updated**: December 11, 2025
+
+**Version**: v2.5.3
+>>>>>>> 1efa54987229a879c20bae4a80e1557b1e64f139
