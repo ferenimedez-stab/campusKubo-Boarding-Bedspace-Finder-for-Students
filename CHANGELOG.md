@@ -3,13 +3,21 @@
 All notable changes to this project will be documented in this file.
 
 ---
+## [2.5.4] - 2025-12-13 (Enimedez)
+
+### Changed
+- Updated README.md Setup & run section, removed credentials table, and version bump to v2.5.4.
+- Removed Code_Documentation.md file from docs/CS 319/ containing redundant project information.
+
+---
+
 ## [2.5.3] - 2025-12-13 (Agnote)
 
 ### Added
 - Added updated documentation refinements to README.md and CHANGELOG.md for consistency and clarity.
 - Added missing metadata alignment across documentation files.
 
-#### Changed
+### Changed
 - Updated README.md version to reflect documentation updates and version bump to v2.5.3.
 - Improved formatting, spacing, and section hierarchy in CHANGELOG.md for better readability.
 - Standardized markdown structure and terminology across all documentation files.
@@ -17,6 +25,8 @@ All notable changes to this project will be documented in this file.
 ### Fixed
 - Fixed duplicated version entries in the changelog.
 - Corrected inconsistent indentation and bullet formatting in older entries.
+
+---
 
 ## [2.5.2] - 2025-12-11 (Tercero)
 

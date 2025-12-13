@@ -67,14 +67,6 @@ cp .env.example .env         # adjust secrets if needed
 python main.py               # launches the Flet desktop
 ```
 
-Default seeded credentials (created automatically on first run):
-
-| Role | Email | Password |
-| --- | --- | --- |
-| Admin | `admin@campuskubo.local` | `ChangeMe123!` |
-| Manager | `manager@campuskubo.local` | `ManagerPass123!` |
-| Tenant | `tenant@campuskubo.local` | `TenantPass123!` |
-
 > Tip: when running command-line utilities (tests, scripts), execute them from the repository root and reference modules inside the `app/` directory.
 
 ---
@@ -238,6 +230,6 @@ For questions or issues:
 
 ---
 
-**Last Updated**: December 12, 2025
+**Last Updated**: December 13, 2025
 
-**Version**: v2.5.3
+**Version**: v2.5.4
