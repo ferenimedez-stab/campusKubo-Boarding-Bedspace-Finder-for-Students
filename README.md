@@ -361,7 +361,7 @@ For questions or issues:
 
 ---
 
-**Last Updated**: December 11, 2025
+**Last Updated**: December 13, 2025
 
 **Version**: v2.5.3
 >>>>>>> 1efa54987229a879c20bae4a80e1557b1e64f139
