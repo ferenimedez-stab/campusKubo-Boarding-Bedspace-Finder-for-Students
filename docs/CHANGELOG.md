@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [2.5.3] - 2025-12-13 (Agnote)
+
+### Added
+- Added updated documentation refinements to README.md and CHANGELOG.md for consistency and clarity.
+- Added missing metadata alignment across documentation files.
+
+### Changed
+- Updated README.md version to reflect documentation updates and version bump to v2.5.3.
+- Improved formatting, spacing, and section hierarchy in CHANGELOG.md for better readability.
+- Standardized markdown structure and terminology across all documentation files.
+### Fixed
+- Fixed duplicated version entries in the changelog.
+- Corrected inconsistent indentation and bullet formatting in older entries.
+
+---
+
 ## [2.5.2] - 2025-12-11 (Tercero)
 
 ### Removed
