@@ -2,10 +2,14 @@ import flet as ft
 
 
 class Footer:
-    """Footer component"""
+    """Footer component
 
-    def __init__(self):
-        pass
+    Backwards-compatible with older tests that instantiate `Footer(page)`
+    and call `.build()`.
+    """
+
+    def __init__(self, page: ft.Page | None = None):
+        self.page = page
 
     def view(self):
         return ft.Container(
@@ -74,3 +78,7 @@ class Footer:
                 ]
             )
         )
+
+    def build(self) -> ft.Control:
+        """Compatibility wrapper for tests expecting `.build()`."""
+        return self.view()

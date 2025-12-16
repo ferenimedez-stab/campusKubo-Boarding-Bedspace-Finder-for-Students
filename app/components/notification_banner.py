@@ -8,9 +8,17 @@ import flet as ft
 class NotificationBanner:
     """Notification banner for displaying messages (info, success, warning, error)"""
 
-    def __init__(self, message: str, type: str = "info", on_close=None):
-        self.message = message
-        self.type = type
+    def __init__(self, page_or_message, message_or_type=None, type_or_none=None, on_close=None):
+        # Accept signatures: (message, type, on_close) or (page, message, type)
+        if hasattr(page_or_message, "session"):
+            # (page, message, type)
+            self.page = page_or_message
+            self.message = message_or_type
+            self.type = type_or_none or "info"
+        else:
+            self.page = None
+            self.message = page_or_message
+            self.type = message_or_type or "info"
         self.on_close = on_close
 
     def view(self):
@@ -24,7 +32,7 @@ class NotificationBanner:
 
         style = colors.get(self.type, colors["info"])
 
-        return ft.Container(
+        container = ft.Container(
             bgcolor=style["bg"],
             padding=15,
             border_radius=10,
@@ -52,3 +60,7 @@ class NotificationBanner:
                 ]
             )
         )
+        return container
+
+    def build(self):
+        return self.view()

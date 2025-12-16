@@ -150,7 +150,7 @@ class SignupForm:
             on_click=lambda _: self._change_role("Property Manager")
         )
 
-        return ft.Column(
+        content = ft.Column(
             alignment=ft.MainAxisAlignment.CENTER,
             horizontal_alignment=ft.CrossAxisAlignment.CENTER,
             spacing=20,
@@ -215,6 +215,7 @@ class SignupForm:
                 )
             ]
         )
+        return ft.Container(content=content)
 
     def _handle_signup(self, e):
         """Handle signup button click"""

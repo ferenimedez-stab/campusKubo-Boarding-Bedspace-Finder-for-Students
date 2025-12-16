@@ -41,7 +41,7 @@ class LoginForm:
 
     def build(self):
         """Return the login form as a control"""
-        return ft.Column(
+        content = ft.Column(
             alignment=ft.MainAxisAlignment.CENTER,
             horizontal_alignment=ft.CrossAxisAlignment.CENTER,
             spacing=20,
@@ -94,6 +94,7 @@ class LoginForm:
                 )
             ]
         )
+        return ft.Container(content=content)
 
     def _handle_login(self, e):
         """Handle login button click"""

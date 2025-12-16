@@ -8,8 +8,13 @@ import flet as ft
 class PasswordRequirements:
     """Displays password validation requirements with visual feedback"""
 
-    def __init__(self, password: str = ""):
-        self.password = password
+    def __init__(self, page_or_password: str | None = None, password: str = ""):
+        # Accept either (password) or (page, password) for backward compatibility
+        if hasattr(page_or_password, "session"):
+            # signature: (page, password)
+            self.password = password
+        else:
+            self.password = page_or_password or password
         self.requirements = [
             {"name": "length", "label": "At least 8 characters", "met": False},
             {"name": "uppercase", "label": "One uppercase letter", "met": False},
