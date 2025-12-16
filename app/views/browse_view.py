@@ -38,7 +38,7 @@ class BrowseView:
 
         return ft.Container(
             bgcolor=self.colors["card_bg"],
-            width=280,
+            width=260,
             padding=15,
             margin=10,
             border_radius=8,
@@ -52,14 +52,14 @@ class BrowseView:
                 spacing=10,
                 controls=[
                     ft.Container(
-                        width=250,
+                        width=230,
                         height=150,
                         bgcolor=self.colors["border"],
                         border_radius=8,
                         clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
                         content=ft.Image(
                             src=image_url,
-                            width=250,
+                            width=230,
                             height=150,
                             fit=ft.ImageFit.COVER,
                         ) if image_url else ft.Icon(ft.Icons.HOME, size=60, color=self.colors["text_light"])
@@ -469,6 +469,7 @@ class BrowseView:
             def remove_location(e):
                 new_filters = filters.copy()
                 new_filters.pop("location", None)
+                self.page.session.set("filters", new_filters)
                 self.page.views.clear()
                 self.page.views.append(self.build())
                 self.page.update()
