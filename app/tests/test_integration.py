@@ -1,13 +1,13 @@
 import pytest
 from unittest.mock import Mock, patch
 import flet as ft
-from app.services.auth_service import AuthService
-from app.services.user_service import UserService
-from app.services.listing_service import ListingService
-from app.services.reservation_service import ReservationService
-from app.services.notification_service import NotificationService
-from app.models.user import User, UserRole
-from app.models.listing import Listing
+from services.auth_service import AuthService
+from services.user_service import UserService
+from services.listing_service import ListingService
+from services.reservation_service import ReservationService
+from services.notification_service import NotificationService
+from models.user import User, UserRole
+from models.listing import Listing
 from datetime import datetime
 
 
@@ -26,9 +26,9 @@ class DummyPage:
 
 
 # Integration Tests - Testing service interactions
-@patch('app.services.user_service.db_get_user_by_id')
-@patch('app.services.listing_service.get_listings')
-@patch('app.services.listing_service.get_listing_images')
+@patch('services.user_service.db_get_user_by_id')
+@patch('services.listing_service.get_listings')
+@patch('services.listing_service.get_listing_images')
 def test_user_listing_integration(mock_images, mock_listings, mock_user):
     # Test user retrieving their listings
     mock_user.return_value = {'id': 1, 'email': 'test@example.com', 'role': 'pm'}
@@ -43,8 +43,8 @@ def test_user_listing_integration(mock_images, mock_listings, mock_user):
     assert listings[0].pm_id == 1  # Assuming listing has pm_id
 
 
-@patch('app.services.reservation_service.create_reservation')
-@patch('app.services.notification_service.NotificationService')
+@patch('services.reservation_service.create_reservation')
+@patch('services.notification_service.NotificationService')
 def test_reservation_notification_integration(mock_notif_service, mock_create_reservation):
     # Test creating reservation and sending notification
     mock_create_reservation.return_value = 1
@@ -59,8 +59,8 @@ def test_reservation_notification_integration(mock_notif_service, mock_create_re
     # mock_notif_instance.add_notification.assert_called_once()
 
 
-@patch('app.services.auth_service.AuthService.validate_email')
-@patch('app.services.auth_service.AuthService.validate_password')
+@patch('services.auth_service.AuthService.validate_email')
+@patch('services.auth_service.AuthService.validate_password')
 def test_auth_validation_integration(mock_validate_pass, mock_validate_email):
     # Test complete auth validation flow
     mock_validate_email.return_value = (True, "Valid")
@@ -89,9 +89,9 @@ def test_user_role_workflow():
     assert tenant_user.role.value == "tenant"
 
 
-@patch('app.services.listing_service.get_listing_by_id')
-@patch('app.services.listing_service.get_listing_images')
-@patch('app.services.reservation_service.create_reservation')
+@patch('services.listing_service.get_listing_by_id')
+@patch('services.listing_service.get_listing_images')
+@patch('services.reservation_service.create_reservation')
 def test_listing_reservation_workflow(mock_create_reservation, mock_images, mock_listing):
     # Test complete listing to reservation workflow
     mock_listing.return_value = {'id': 1, 'address': 'Test Address', 'price': 1000}
@@ -131,7 +131,7 @@ def test_notification_workflow():
 
 def test_data_validation_workflow():
     # Test data validation across services
-    from app.services.auth_service import AuthService
+    from services.auth_service import AuthService
 
     # Test email validation
     valid_email = AuthService.validate_email("valid@example.com")

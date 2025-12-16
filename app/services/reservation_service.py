@@ -25,6 +25,7 @@ class ReservationService:
         Create new reservation
         Returns (success: bool, message: str)
         """
+        print(f"[DEBUG] ReservationService.create_new_reservation called - listing_id={listing_id}, tenant_id={tenant_id}, start_date={start_date}, end_date={end_date}")
         # Basic validation
         if not start_date or not end_date:
             return False, "Start and end dates are required"
@@ -35,8 +36,10 @@ class ReservationService:
         )
 
         if reservation_id:
+            print(f"[DEBUG] ReservationService - reservation created: {reservation_id}")
             return True, "Reservation created successfully"
         else:
+            print(f"[DEBUG] ReservationService - reservation creation failed")
             return False, "Failed to create reservation"
 
     @staticmethod

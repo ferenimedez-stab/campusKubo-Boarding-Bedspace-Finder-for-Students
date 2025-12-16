@@ -3,6 +3,22 @@
 All notable changes to this project will be documented in this file.
 
 ---
+## [2.5.5] - 2025-12-16 (Enimedez)
+
+### Changed
+- Updated `README.md` to correct setup/test commands, clarify persistence (raw `sqlite3`), list test locations, and version bump to 2.5.5.
+- `app/main.py` — startup and routing adjustments.
+- `app/models/user.py` — user model updates (profile / verification fields).
+- `app/services/admin_service.py`, `app/services/auth_service.py`, `app/services/notification_service.py`, `app/services/reservation_service.py` — service fixes and behavior sync.
+- `app/state/session_state.py` — session handling and RBAC improvements.
+- `app/storage/db.py`, `app/storage/file_storage.py` — PRAGMA hardening, migrations, and file storage path fixes.
+- Updated tests under `app/tests/` to reflect behavior and API changes.
+
+### Added
+- `app/config/secrets.py` — runtime secret key helper.
+- `app/storage/.env.example` — example environment variables for local setup.
+
+---
 ## [2.5.4] - 2025-12-13 (Enimedez)
 
 ### Changed

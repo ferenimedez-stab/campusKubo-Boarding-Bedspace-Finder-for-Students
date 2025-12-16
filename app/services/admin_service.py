@@ -17,6 +17,7 @@ from storage.db import (
 from models.user import User, UserRole
 from models.listing import Listing
 from services.refresh_service import notify as _notify_refresh
+from services.activity_service import ActivityService
 
 class AdminService:
     """Service for admin-related operations"""
@@ -49,48 +50,52 @@ class AdminService:
         conn.close()
         return User.from_db_row(row) if row else None
 
-    def deactivate_user(self, user_id: int) -> bool:
+    def deactivate_user(self, admin_id: int, user_id: int) -> bool:
         ok = db_deactivate_user(user_id)
         if ok:
+            ActivityService.log_activity(admin_id, "User Deactivated", f"Deactivated user ID {user_id}")
             try:
                 _notify_refresh()
             except Exception:
                 pass
         return ok
 
-    def activate_user(self, user_id: int) -> bool:
+    def activate_user(self, admin_id: int, user_id: int) -> bool:
         ok = db_activate_user(user_id)
         if ok:
+            ActivityService.log_activity(admin_id, "User Activated", f"Activated user ID {user_id}")
             try:
                 _notify_refresh()
             except Exception:
                 pass
         return ok
 
-    def delete_user(self, user_id: int) -> bool:
+    def delete_user(self, admin_id: int, user_id: int) -> bool:
         """Permanently remove a user from the database (admin action)."""
         ok = db_delete_user(user_id)
         if ok:
+            ActivityService.log_activity(admin_id, "User Deleted", f"Deleted user ID {user_id}")
             try:
                 _notify_refresh()
             except Exception:
                 pass
         return ok
 
-    def create_user_account(self, full_name: str, email: str, role: str, password: str, is_active: bool = True) -> tuple[bool, str]:
+    def create_user_account(self, admin_id: int, full_name: str, email: str, role: str, password: str, is_active: bool = True) -> tuple[bool, str]:
         """Create a user account as an admin."""
         if not full_name or not email or not role or not password:
             return False, "All fields are required"
 
         success, msg = create_user(full_name, email, password, role, 1 if is_active else 0)
         if success:
+            ActivityService.log_activity(admin_id, "User Created", f"Created user {email} with role {role}")
             try:
                 _notify_refresh()
             except Exception:
                 pass
         return success, msg
 
-    def update_user_account(self, user_id: int, full_name: str, email: str, role: str, is_active: bool = True, phone: Optional[str] = None) -> tuple[bool, str]:
+    def update_user_account(self, admin_id: int, user_id: int, full_name: str, email: str, role: str, is_active: bool = True, phone: Optional[str] = None) -> tuple[bool, str]:
         """Update user metadata as an admin."""
         # Capture any stderr output from the DB adapter so we can return a
         # helpful message to the UI instead of a generic failure string.
@@ -107,6 +112,7 @@ class AdminService:
 
         stderr_out = buf.getvalue().strip()
         if ok:
+            ActivityService.log_activity(admin_id, "User Updated", f"Updated user ID {user_id}: {full_name}, {email}, role {role}")
             try:
                 _notify_refresh()
             except Exception:
@@ -119,12 +125,13 @@ class AdminService:
 
         return False, "Failed to update user"
 
-    def reset_user_password(self, user_id: int, new_password: str) -> tuple[bool, str]:
+    def reset_user_password(self, admin_id: int, user_id: int, new_password: str) -> tuple[bool, str]:
         """Reset password for a user."""
         if not new_password:
             return False, "Password cannot be empty"
         ok = db_update_user_password(user_id, new_password)
         if ok:
+            ActivityService.log_activity(admin_id, "Password Reset", f"Reset password for user ID {user_id}")
             try:
                 _notify_refresh()
             except Exception:
@@ -132,7 +139,7 @@ class AdminService:
             return True, "Password updated"
         return False, "Failed to update password"
 
-    def approve_pm(self, user_id: int) -> bool:
+    def approve_pm(self, admin_id: int, user_id: int) -> bool:
         conn = get_connection()
         cursor = conn.cursor()
         cursor.execute("UPDATE users SET is_verified=1 WHERE id=? AND role='pm'", (user_id,))
@@ -141,13 +148,14 @@ class AdminService:
         conn.close()
         ok = affected > 0
         if ok:
+            ActivityService.log_activity(admin_id, "PM Approved", f"Approved property manager user ID {user_id}")
             try:
                 _notify_refresh()
             except Exception:
                 pass
         return ok
 
-    def reject_pm(self, user_id: int) -> bool:
+    def reject_pm(self, admin_id: int, user_id: int) -> bool:
         conn = get_connection()
         cursor = conn.cursor()
         cursor.execute("UPDATE users SET is_verified=0 WHERE id=? AND role='pm'", (user_id,))
@@ -156,6 +164,7 @@ class AdminService:
         conn.close()
         ok = affected > 0
         if ok:
+            ActivityService.log_activity(admin_id, "PM Rejected", f"Rejected property manager user ID {user_id}")
             try:
                 _notify_refresh()
             except Exception:

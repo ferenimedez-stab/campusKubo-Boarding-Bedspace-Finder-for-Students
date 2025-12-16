@@ -9,3 +9,23 @@ def go_home(page):
         page.go("/tenant")
     else:
         page.go("/")
+
+
+def debug_click(button_name, original_callback=None):
+    """Debug wrapper for button clicks."""
+    def wrapper(e=None):
+        print(f"DEBUG: Button clicked - {button_name}")
+        if original_callback:
+            return original_callback(e)
+    return wrapper
+
+
+def go_back(page, fallback="/"):
+    """Navigate back using navigation history, with fallback route."""
+    history = getattr(page, "_nav_history", [])
+    if history:
+        prev_route = history.pop()
+        setattr(page, "_nav_back_navigation", True)
+        page.go(prev_route)
+    else:
+        page.go(fallback)

@@ -1,4 +1,5 @@
 # services/auth_service.py
+import os
 import re
 import secrets
 from datetime import datetime, timedelta
@@ -23,7 +24,7 @@ class AuthService:
     # Only these roles can self-register
     ALLOWED_ROLES = ["tenant", "pm"]
     # Validation constants
-    PASSWORD_MIN_LENGTH = 8
+    PASSWORD_MIN_LENGTH = int(os.getenv('MIN_LENGTH_PASSWORD', '8'))
     PASSWORD_REQUIREMENTS = [
         ("length", lambda p, min_len=PASSWORD_MIN_LENGTH: len(p) >= min_len, f"At least {PASSWORD_MIN_LENGTH} characters"),
         ("digit", lambda p: any(c.isdigit() for c in p), "One number"),
@@ -175,7 +176,11 @@ class AuthService:
         return bool(success)
 
     @staticmethod
-    def ensure_admin_exists(email="admin@example.com", password="admin123", full_name="Super Admin"):
+    def ensure_admin_exists(email=None, password=None, full_name="Super Admin"):
+        if email is None:
+            email = os.getenv('DEFAULT_ADMIN_EMAIL', 'admin@campuskubo.local')
+        if password is None:
+            password = os.getenv('DEFAULT_ADMIN_PASSWORD', 'Admin123!')
         from storage.db import get_connection
 
         conn = get_connection()
@@ -248,8 +253,8 @@ class AuthService:
             # Generate cryptographically secure token (32 bytes = 256 bits of entropy)
             token = secrets.token_urlsafe(32)
 
-            # Token expires in 15 minutes (adjust as needed)
-            expires_at = (datetime.utcnow() + timedelta(minutes=15)).isoformat()
+            # Token expires in configured minutes
+            expires_at = (datetime.utcnow() + timedelta(minutes=int(os.getenv('PASSWORD_RESET_EXPIRY_MINUTES', '1')))).isoformat()
 
             # Store token in database
             success = create_password_reset_token(user["id"], token, expires_at)

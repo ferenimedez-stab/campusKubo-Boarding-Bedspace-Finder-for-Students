@@ -27,7 +27,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # ---------- CONFIG ----------
-DB_FILE = os.path.join(os.path.dirname(__file__), "campuskubo.db")
+DB_FILE = os.getenv('DATABASE_URL', os.path.join(os.path.dirname(__file__), "campuskubo.db"))
 SQLCIPHER_AVAILABLE = False
 
 # ---------- Utilities ----------
@@ -88,11 +88,15 @@ def log_login_attempt(email: str, success: bool, ip_address: Optional[str] = Non
         print(f"[log_login_attempt] error: {e}", file=sys.stderr)
 
 
-def is_account_locked(email: str, max_attempts: int = 5, lockout_seconds: int = 30) -> Tuple[bool, Optional[str]]:
+def is_account_locked(email: str, max_attempts: int = None, lockout_seconds: int = None) -> Tuple[bool, Optional[str]]:
     """
     Check if an account is locked due to too many failed login attempts.
     Returns (is_locked: bool, unlock_time: Optional[str])
     """
+    if max_attempts is None:
+        max_attempts = int(os.getenv('RATE_LIMIT_MAX_ATTEMPTS', '5'))
+    if lockout_seconds is None:
+        lockout_seconds = int(os.getenv('RATE_LIMIT_WINDOW_MINUTES', '15')) * 60
     try:
         conn = get_connection()
         cur = conn.cursor()
@@ -895,50 +899,6 @@ def _ensure_address_table(conn):
         """
     )
     conn.commit()
-
-
-def get_user_address(user_id: int) -> Optional[Dict[str, Any]]:
-    """Return address record for a user or None."""
-    if not user_id:
-        return None
-    conn = get_connection()
-    try:
-        _ensure_address_table(conn)
-        cur = conn.cursor()
-        cur.execute("SELECT house, street, barangay, city FROM user_addresses WHERE user_id = ?;", (user_id,))
-        row = cur.fetchone()
-        if not row:
-            return None
-        return {
-            "house": row[0],
-            "street": row[1],
-            "barangay": row[2],
-            "city": row[3],
-        }
-    finally:
-        conn.close()
-
-
-def update_user_address(user_id: int, house: str, street: str, barangay: str, city: str) -> bool:
-    """Insert or update the address for a given user_id."""
-    if not user_id:
-        return False
-    conn = get_connection()
-    try:
-        _ensure_address_table(conn)
-        cur = conn.cursor()
-        cur.execute(
-            "INSERT INTO user_addresses(user_id, house, street, barangay, city) VALUES (?, ?, ?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET house=excluded.house, street=excluded.street, barangay=excluded.barangay, city=excluded.city;",
-            (user_id, house or '', street or '', barangay or '', city or '')
-        )
-        conn.commit()
-        return cur.rowcount >= 0
-    except Exception as e:
-        conn.rollback()
-        print(f"[update_user_address] error for user {user_id}: {e}", file=sys.stderr)
-        return False
-    finally:
-        conn.close()
 
 
 def _ensure_users_has_avatar_column(conn):
@@ -1785,6 +1745,35 @@ def get_reservation(reservation_id: int) -> Optional[Dict[str, Any]]:
     finally:
         conn.close()
 
+def update_reservation_status(reservation_id: int, new_status: str) -> bool:
+    """
+    Update the status of a reservation.
+    Valid statuses: pending, approved, confirmed, cancelled, rejected
+    """
+    if reservation_id <= 0:
+        print(f"[update_reservation_status] Invalid reservation ID: {reservation_id}", file=sys.stderr)
+        return False
+    if new_status not in ["pending", "approved", "confirmed", "cancelled", "rejected"]:
+        print(f"[update_reservation_status] Invalid status: {new_status}", file=sys.stderr)
+        return False
+
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("UPDATE reservations SET status = ? WHERE id = ?;", (new_status, reservation_id))
+        if cur.rowcount == 0:
+            print(f"[update_reservation_status] Reservation not found: {reservation_id}", file=sys.stderr)
+            return False
+        conn.commit()
+        log_activity(None, "Reservation Status Updated", f"Reservation {reservation_id} status changed to {new_status}")
+        return True
+    except Exception as e:
+        conn.rollback()
+        print(f"[update_reservation_status] error: {e}", file=sys.stderr)
+        return False
+    finally:
+        conn.close()
+
 # ---------- Activity logging ----------
 def log_activity(user_id: Optional[int], action: str, details: str = "") -> bool:
     conn = get_connection()
@@ -2324,94 +2313,6 @@ def property_data():
         import traceback
         traceback.print_exc()
         conn.rollback()
-    finally:
-        conn.close()
-
-
-def get_properties(search_query: str = "", filters: Optional[Dict[str, Any]] = None) -> List[Dict]:
-    conn = get_connection()
-    cur = conn.cursor()
-
-    try:
-        query = """
-            SELECT id, pm_id, name, address, location, price, description,
-                   room_type, total_rooms, available_rooms, available_room_types,
-                   amenities, availability_status, image_url, image_url_2,
-                   image_url_3, image_url_4, status, created_at
-            FROM listings
-            WHERE status = 'approved'
-        """
-        params = []
-        filters = filters or {}
-
-        # ── Search keyword ───────────────────────────
-        if search_query := (search_query or "").strip():
-            pattern = f"%{search_query}%"
-            query += " AND (name LIKE ? OR location LIKE ? OR address LIKE ? OR description LIKE ?)"
-            params.extend([pattern] * 4)
-
-        # ── Price ────────────────────────────
-        if filters.get("price_min") is not None:
-            query += " AND price >= ?"
-            params.append(filters["price_min"])
-        if price_max := filters.get("price_max"):
-            query += " AND price <= ?"
-            params.append(price_max)
-
-        # ── Room Type (Single, Double, etc.) ───
-        if room_types := filters.get("room_type"):
-            if isinstance(room_types, str):
-                room_types = [room_types]
-            placeholders = ",".join(["?"] * len(room_types))
-            query += f" AND (room_type IN ({placeholders})"
-            params.extend(room_types)
-            for rt in room_types:
-                query += " OR available_room_types LIKE ?"
-                params.append(f'%"{rt}"%')
-            query += ")"
-
-        # ── Amenities (WiFi, Air Conditioning, etc.)
-        if amenities := filters.get("amenities"):
-            if isinstance(amenities, str):
-                amenities = [amenities]
-            for amenity in amenities:
-                query += " AND amenities LIKE ?"
-                params.append(f'%"{amenity}"%')
-
-        # ── Availability status ─────────────────────
-        if availability := filters.get("availability"):
-            query += " AND availability_status = ?"
-            params.append(availability)
-
-        # ── Location ─────────────────────────
-        if location := filters.get("location"):
-            pattern = f"%{location.strip()}%"
-            query += " AND (location LIKE ? OR address LIKE ?)"
-            params.extend([pattern, pattern])
-
-        query += " ORDER BY created_at DESC"
-
-
-        cur.execute(query, params)
-        rows = cur.fetchall()
-        columns = [desc[0] for desc in cur.description]
-        result = [dict(zip(columns, row)) for row in rows]
-
-        for prop in result:
-            for field in ["amenities", "available_room_types"]:
-                if prop.get(field) and isinstance(prop[field], str):
-                    try:
-                        prop[field] = json.loads(prop[field])
-                    except:
-                        prop[field] = []
-
-        return result
-
-    except Exception as e:
-        print(f"[get_properties] ERROR: {e}")
-        import traceback
-        traceback.print_exc()
-        return []
     finally:
         conn.close()
 
@@ -3246,6 +3147,91 @@ def delete_tenant(tenant_id: int) -> bool:
         print(f"[delete_tenant] error: {e}", file=sys.stderr)
         conn.rollback()
         return False
+    finally:
+        conn.close()
+
+
+def get_properties(search_query: str = "", filters: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+    """
+    Returns properties/listings in the format expected by browse_view.py
+    Supports search and filtering
+    """
+    if filters is None:
+        filters = {}
+
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        # Base query
+        query = """
+            SELECT l.id, l.address as name, l.price, l.description,
+                   l.availability_status, l.status, u.full_name as pm_name, u.email as pm_email,
+                   li.image_path as image_url
+            FROM listings l
+            JOIN users u ON l.pm_id = u.id
+            LEFT JOIN listing_images li ON l.id = li.listing_id
+            WHERE l.status = 'approved'
+        """
+
+        params = []
+        conditions = []
+
+        # Search query filtering
+        if search_query and search_query.strip():
+            search_term = f"%{search_query.strip()}%"
+            conditions.append("(l.address LIKE ? OR l.description LIKE ? OR u.full_name LIKE ?)")
+            params.extend([search_term, search_term, search_term])
+
+        # Price range filtering
+        if 'min_price' in filters and filters['min_price']:
+            try:
+                min_price = float(filters['min_price'])
+                conditions.append("l.price >= ?")
+                params.append(min_price)
+            except (ValueError, TypeError):
+                pass
+
+        if 'max_price' in filters and filters['max_price']:
+            try:
+                max_price = float(filters['max_price'])
+                conditions.append("l.price <= ?")
+                params.append(max_price)
+            except (ValueError, TypeError):
+                pass
+
+        # Location filtering
+        if 'location' in filters and filters['location'] and filters['location'].strip():
+            location_term = f"%{filters['location'].strip()}%"
+            conditions.append("l.address LIKE ?")
+            params.append(location_term)
+
+        # Add conditions to query
+        if conditions:
+            query += " AND " + " AND ".join(conditions)
+
+        query += " ORDER BY l.created_at DESC"
+
+        cur.execute(query, params)
+        rows = cur.fetchall()
+
+        # Group by listing ID and take first image for each
+        listings_dict = {}
+        for row in rows:
+            listing_id = row['id']
+            if listing_id not in listings_dict:
+                listings_dict[listing_id] = {
+                    'id': row['id'],
+                    'name': row['name'],
+                    'price': row['price'],
+                    'location': row['name'],  # Using address as location
+                    'availability_status': row['availability_status'],
+                    'image_url': row['image_url'],
+                    'description': row['description'],
+                    'pm_name': row['pm_name'],
+                    'pm_email': row['pm_email']
+                }
+
+        return list(listings_dict.values())
     finally:
         conn.close()
 

@@ -11,6 +11,7 @@ class UserRole(Enum):
     """User role enumeration"""
     TENANT = "tenant"
     PROPERTY_MANAGER = "pm"
+    PM = "pm"  # alias for compatibility
     ADMIN = "admin"
 
 

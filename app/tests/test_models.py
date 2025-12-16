@@ -1,11 +1,11 @@
 import pytest
 from datetime import datetime
-from app.models.user import User, UserRole
-from app.models.listing import Listing
-from app.models.reservation import Reservation, ReservationStatus
-from app.models.payment import Payment
-from app.models.notification import Notification, NotificationType
-from app.models.settings import AppSettings
+from models.user import User, UserRole
+from models.listing import Listing
+from models.reservation import Reservation, ReservationStatus
+from models.payment import Payment
+from models.notification import Notification, NotificationType
+from models.settings import AppSettings
 
 
 def test_user_model():

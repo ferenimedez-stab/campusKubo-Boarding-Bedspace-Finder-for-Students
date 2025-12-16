@@ -1,6 +1,6 @@
 import pytest
-from app.utils.navigation import go_home
-from app.components.admin_utils import format_id, format_name, format_datetime
+from utils.navigation import go_home
+from components.admin_utils import format_id, format_name, format_datetime
 from datetime import datetime
 
 

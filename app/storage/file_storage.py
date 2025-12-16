@@ -11,7 +11,7 @@ import re
 from typing import Optional
 
 
-PROFILE_DIR = os.path.join("assets", "uploads", "profile_photos")
+PROFILE_DIR = os.path.join(os.getenv('FILE_STORAGE_PATH', 'assets/uploads'), "profile_photos")
 
 
 def ensure_profile_dir() -> str:

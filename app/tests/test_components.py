@@ -1,24 +1,24 @@
 import pytest
 import flet as ft
 from unittest.mock import Mock
-from app.components.login_form import LoginForm
-from app.components.signup_form import SignupForm
-from app.components.navbar import NavBar
-from app.components.footer import Footer
-from app.components.logo import Logo
-from app.components.searchbar import SearchBar
-from app.components.listing_card import ListingCard
-from app.components.table_card import TableCard
-from app.components.chart_card import ChartCard
-from app.components.admin_stats_card import AdminStatsCard
-from app.components.admin_user_table import AdminUserTable
-from app.components.notification_banner import NotificationBanner
-from app.components.password_requirements import PasswordRequirements
-from app.components.profile_section import ProfileSection
-from app.components.reservation_form import ReservationForm
-from app.components.search_filter import SearchFilter
-from app.components.signup_banner import SignupBanner
-from app.components.advanced_filters import AdvancedFilters
+from components.login_form import LoginForm
+from components.signup_form import SignupForm
+from components.navbar import NavBar
+from components.footer import Footer
+from components.logo import Logo
+from components.searchbar import SearchBar
+from components.listing_card import ListingCard
+from components.table_card import TableCard
+from components.chart_card import ChartCard
+from components.admin_stats_card import AdminStatsCard
+from components.admin_user_table import AdminUserTable
+from components.notification_banner import NotificationBanner
+from components.password_requirements import PasswordRequirements
+from components.profile_section import ProfileSection
+from components.reservation_form import ReservationForm
+from components.search_filter import SearchFilter
+from components.signup_banner import SignupBanner
+from components.advanced_filters import AdvancedFilters
 
 
 class DummyPage:
@@ -53,7 +53,7 @@ def test_signup_form_build():
 def test_navbar_build():
     page = DummyPage()
     navbar = NavBar(page)
-    component = navbar.build()
+    component = navbar.view()
     assert component is not None
     assert isinstance(component, ft.Container)
 
@@ -162,10 +162,12 @@ def test_password_requirements_build():
 
 
 def test_profile_section_build():
+    from unittest.mock import patch
     page = DummyPage()
-    user = Mock(id=1, email="test@example.com", full_name="Test User", phone="1234567890")
-
-    section = ProfileSection(page, user)
+    with patch('services.user_service.UserService.get_user_full', return_value={'full_name': 'Test User', 'email': 'test@example.com', 'phone': '1234567890'}):
+        section = ProfileSection(page)
+        component = section.get_profile_info()
+        assert component is not None
     component = section.build()
     assert component is not None
     assert isinstance(component, ft.Container)

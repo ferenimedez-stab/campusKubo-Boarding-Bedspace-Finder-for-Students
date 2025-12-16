@@ -1,16 +1,16 @@
 import pytest
 from unittest.mock import Mock, patch
-from app.services.auth_service import AuthService
-from app.services.user_service import UserService
-from app.services.listing_service import ListingService
-from app.services.reservation_service import ReservationService
-from app.services.notification_service import NotificationService
-from app.services.admin_service import AdminService
-from app.services.settings_service import SettingsService
-from app.services.activity_service import ActivityService
-from app.services.report_service import ReportService
-from app.models.listing import Listing
-from app.models.user import User, UserRole
+from services.auth_service import AuthService
+from services.user_service import UserService
+from services.listing_service import ListingService
+from services.reservation_service import ReservationService
+from services.notification_service import NotificationService
+from services.admin_service import AdminService
+from services.settings_service import SettingsService
+from services.activity_service import ActivityService
+from services.report_service import ReportService
+from models.listing import Listing
+from models.user import User, UserRole
 from datetime import datetime
 
 
@@ -29,7 +29,7 @@ def test_auth_service_validate_password():
     assert "At least 8 characters" in msg
 
 
-@patch('app.services.user_service.db_get_user_by_id')
+@patch('services.user_service.db_get_user_by_id')
 def test_user_service_get_user(mock_get):
     mock_get.return_value = {'id': 1, 'email': 'test@example.com'}
     user = UserService.get_user_full(1)
@@ -37,8 +37,8 @@ def test_user_service_get_user(mock_get):
 
 
 # Listing Service Tests
-@patch('app.services.listing_service.get_listings')
-@patch('app.services.listing_service.get_listing_images')
+@patch('services.listing_service.get_listings')
+@patch('services.listing_service.get_listing_images')
 def test_listing_service_get_all_listings(mock_images, mock_listings):
     mock_listings.return_value = [{'id': 1, 'address': 'Test Address', 'price': 1000}]
     mock_images.return_value = ['image1.jpg']
@@ -48,8 +48,8 @@ def test_listing_service_get_all_listings(mock_images, mock_listings):
     assert listings[0].address == 'Test Address'
 
 
-@patch('app.services.listing_service.get_listing_by_id')
-@patch('app.services.listing_service.get_listing_images')
+@patch('services.listing_service.get_listing_by_id')
+@patch('services.listing_service.get_listing_images')
 def test_listing_service_get_listing_by_id(mock_images, mock_listing):
     mock_listing.return_value = {'id': 1, 'address': 'Test Address', 'price': 1000}
     mock_images.return_value = ['image1.jpg']
@@ -59,7 +59,7 @@ def test_listing_service_get_listing_by_id(mock_images, mock_listing):
     assert listing.id == 1
 
 
-@patch('app.services.listing_service.get_listing_availability')
+@patch('services.listing_service.get_listing_availability')
 def test_listing_service_check_availability(mock_availability):
     mock_availability.return_value = []
     result = ListingService.check_availability(1)
@@ -67,7 +67,7 @@ def test_listing_service_check_availability(mock_availability):
 
 
 # Reservation Service Tests
-@patch('app.services.reservation_service.create_reservation')
+@patch('services.reservation_service.create_reservation')
 def test_reservation_service_create_new_reservation(mock_create):
     mock_create.return_value = 1
     success, message = ReservationService.create_new_reservation(1, 1, '2024-01-01', '2024-01-02')
@@ -132,7 +132,7 @@ def test_notification_service_mark_all_notifications_read():
 
 
 # Admin Service Tests
-@patch('app.services.admin_service.get_connection')
+@patch('services.admin_service.get_connection')
 def test_admin_service_get_all_users(mock_conn):
     mock_cursor = Mock()
     mock_conn.return_value.cursor.return_value = mock_cursor
@@ -144,7 +144,7 @@ def test_admin_service_get_all_users(mock_conn):
     assert users[0].email == 'test@example.com'
 
 
-@patch('app.services.admin_service.get_connection')
+@patch('services.admin_service.get_connection')
 def test_admin_service_get_user_by_id(mock_conn):
     mock_cursor = Mock()
     mock_conn.return_value.cursor.return_value = mock_cursor
@@ -158,7 +158,7 @@ def test_admin_service_get_user_by_id(mock_conn):
 
 # Settings Service Tests
 # Settings Service Tests
-@patch('app.services.settings_service.db_get_settings')
+@patch('services.settings_service.db_get_settings')
 def test_settings_service_get_settings(mock_get):
     mock_get.return_value = {'theme': 'dark', 'notifications': True}
     # Assuming SettingsService has a get_settings method
@@ -166,13 +166,13 @@ def test_settings_service_get_settings(mock_get):
 
 
 # Activity Service Tests
-@patch('app.services.activity_service.log_activity')
+@patch('services.activity_service.log_activity')
 def test_activity_service_log_activity(mock_log):
     ActivityService.log_activity(1, 'login', 'User logged in')
     mock_log.assert_called_once_with(1, 'login', 'User logged in')
 
 
-@patch('app.services.activity_service.get_recent_activity')
+@patch('services.activity_service.get_recent_activity')
 def test_activity_service_get_recent_activities(mock_get):
     # Create a mock row that supports both key access and index access
     class MockRow:
@@ -206,7 +206,7 @@ def test_activity_service_get_recent_activities(mock_get):
 
 
 # Report Service Tests
-@patch('app.services.report_service.get_connection')
+@patch('services.report_service.get_connection')
 def test_report_service_get_reports(mock_conn):
     # Create a mock row that supports both key access and index access
     class MockRow:

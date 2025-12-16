@@ -18,9 +18,8 @@ CampusKubo is a Flet (Python + Flutter rendering) experience that helps Rinconad
 - **Tenant workspace** — advanced filtering, reservation workflow with automatic capacity updates, and notification center.
 - **Manager workspace** — listing creation/editing, amenity + capacity management, and pending status view.
 - **Admin workspace** — listing approvals, RBAC controls, user disablement, and security/audit logging.
-- **Emerging tech add-ons** — AI-style recommendations based on booking history + occupancy, plus interactive insight cards and charts for bookings/revenue/occupancy.
-- **Persistence + logging** — SQLAlchemy ORM on SQLite, audit log for every privileged action, and seeded demo data on first launch.
- - **Persistence + logging** — SQLite (raw sqlite3 layer), audit log for every privileged action, and seeded demo data on first launch.
+- **Emerging tech add-ons** — interactive insight cards and charts for bookings/revenue/occupancy.
+- **Persistence + logging** — SQLite3 via a raw `sqlite3` layer, audit log for privileged actions, WAL journaling and PRAGMA hardening, plus seeded demo data on first launch.
 
 ---
 
@@ -42,14 +41,14 @@ CampusKubo is a Flet (Python + Flutter rendering) experience that helps Rinconad
 app/
 ├── main.py               # Flet entrypoint + navigation scaffolding
 ├── config/               # Settings loader (.env) and runtime directories
-├── models/               # SQLAlchemy ORM entities + enums
+├── models/               # Data models and domain entities (SQLite-backed)
 ├── services/             # Domain logic (auth, property, reservation, AI recs, insights)
 ├── state/                # In-memory session + view models
 ├── storage/              # Engine bootstrap + seeding helpers
 ├── utils/                # Security helpers (hashing, OTP, tokens)
 ├── tests/                # Pytest suites (unit + integration)
-├── assets/               # Static uploads
-└── docs/                 # Reports, diagrams, test matrices
+── assets/               # Static uploads
+── docs/                 # Reports, test matrices
 ```
 
 ---
@@ -61,7 +60,7 @@ git clone <repo-url>
 cd campusKubo-final
 python -m venv .venv
 .venv\Scripts\activate      # use `source .venv/bin/activate` on macOS/Linux
-pip install -r app/requirements.txt
+pip install -r requirements.txt
 cd app
 cp .env.example .env         # adjust secrets if needed
 python main.py               # launches the Flet desktop
@@ -76,7 +75,7 @@ python main.py               # launches the Flet desktop
 ```bash
 cd campusKubo-final
 .venv\Scripts\activate
-.venv\Scripts\python.exe -m pytest app\tests
+python -m pytest app/tests
 ```
 
 The suite contains:
@@ -217,7 +216,7 @@ This project is developed for academic purposes as part of CCCS 106 (Application
 - Built with [Flet Framework](https://flet.dev/)
 - Inspired by student accommodation platforms
 - Special thanks to our instructors and collaborators
-- Some parts are AI-assissted
+- Some parts are AI-assisted
 
 ---
 
@@ -230,6 +229,6 @@ For questions or issues:
 
 ---
 
-**Last Updated**: December 13, 2025
+**Last Updated**: December 16, 2025
 
-**Version**: v2.5.4
+**Version**: v2.5.5

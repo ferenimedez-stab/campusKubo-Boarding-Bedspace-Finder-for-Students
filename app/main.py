@@ -10,6 +10,10 @@ sys.path.insert(0, os.path.dirname(__file__))
 
 import flet as ft
 
+# Generate or load secret key
+from config.secrets import get_or_create_secret_key
+get_or_create_secret_key()
+
 # Import database functions (matching model's import style)
 from storage.db import (
     init_db,
@@ -31,11 +35,13 @@ from views.home_view import HomeView
 from views.browse_view import BrowseView
 from views.login_view import LoginView
 from views.signup_view import SignupView
-from views.tenant_dashboard_view import TenantDashboardView
+from views.tenant_dashboard_view import tenant_dashboard_view
 from views.pm_dashboard_view import PMDashboardView
-from views.pm_profile_view import PMProfileView
+from views.pm_analytics_view import PMAnalyticsView
 from views.pm_add_edit_view import PMAddEditView
+from views.pm_profile_view import PMProfileView
 from views.property_detail_view import PropertyDetailView
+from views.rooms_view import RoomsView
 from views.rooms_view import RoomsView
 from views.my_tenants_view import MyTenantsView
 from views.user_profile_view import UserProfileView
@@ -44,6 +50,7 @@ from views.tenant_messages_view import TenantMessagesView
 from views.forbidden_view import ForbiddenView
 from views.terms_view import TermsView
 from views.privacy_view import PrivacyView
+from views.reservation_view import ReservationView
 from state.session_state import SessionState
 
 def main(page: ft.Page):
@@ -57,10 +64,10 @@ def main(page: ft.Page):
 
     # Initialize database
     # Run startup health checks before initializing DB
-    try:
-        run_startup_checks(fail_on_error=False)
-    except Exception as e:
-        print(f"[main] Startup health check warning: {e}")
+#   try:
+#       run_startup_checks(fail_on_error=False)
+#   except Exception as e:
+#       print(f"[main] Startup health check warning: {e}")
     init_db()
     AuthService.ensure_admin_exists()
     property_data()
@@ -126,7 +133,7 @@ def main(page: ft.Page):
 
         elif route == "/signup":
             view = SignupView(page).build()
-        
+
         elif route == "/terms":
             view = TermsView(page).build()
 
@@ -149,10 +156,13 @@ def main(page: ft.Page):
 
         # --- TENANT ROUTES ---
         elif route == "/tenant":
-            view = TenantDashboardView(page).build()
+            view = tenant_dashboard_view(page)
 
         elif route == "/tenant/reservations":
             view = TenantReservationsView(page).build()
+
+        elif route == "/reservations":
+            view = ReservationView(page).build()
 
         elif route == "/tenant/messages":
             view = TenantMessagesView(page).build()
@@ -174,27 +184,10 @@ def main(page: ft.Page):
             view = PMProfileView(page).build()
 
         elif route == "/pm/profile/edit":
-            view = PMProfileView(page).build_edit()
+            view = PMAddEditView(page).build()
 
         elif route == "/pm/analytics":
-            view = ft.View(
-                "/pm/analytics",
-                controls=[
-                    ft.Container(
-                        padding=40,
-                        content=ft.Column(
-                            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                            controls=[
-                                ft.Icon(ft.Icons.ANALYTICS, size=64, color="#0078FF"),
-                                ft.Text("Analytics", size=28, weight=ft.FontWeight.BOLD),
-                                ft.Text("Coming soon!", size=16, color="#666"),
-                                ft.ElevatedButton("Back to Dashboard", on_click=lambda _: page.go("/pm"))
-                            ],
-                            spacing=20
-                        )
-                    )
-                ]
-            )
+            view = PMAnalyticsView(page).build()
 
         elif route == "/rooms":
             view = RoomsView(page).build()
@@ -266,7 +259,7 @@ def main(page: ft.Page):
                                     icon=ft.Icons.HOME,
                                     on_click=lambda _: page.go("/"),
                                     bgcolor="#0078FF",
-                                    color="white"
+                                    color = ft.Colors.WHITE
                                 )
                             ]
                         )
