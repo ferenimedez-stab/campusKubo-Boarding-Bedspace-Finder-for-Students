@@ -231,4 +231,4 @@ For questions or issues:
 
 **Last Updated**: December 16, 2025
 
-**Version**: v2.5.5
+**Version**: v2.5.7

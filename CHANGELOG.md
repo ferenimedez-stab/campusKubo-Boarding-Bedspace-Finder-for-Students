@@ -3,6 +3,33 @@
 All notable changes to this project will be documented in this file.
 
 ---
+## [2.5.7] - 2025-12-16 (Pontanares)
+
+### Changed
+- `app/views/home_view.py` — removed search bar and filter controls; added shuffle mode for the featured grid.
+- `app/views/browse_view.py` — updated browse list layout to display 4 items per row in the grid.
+- `app/components/sidebar.py` — added sidebar navigation component.
+- Layout adjustments across Home and Browse views to accommodate the new sidebar.
+- Minor UI consistency and spacing refinements related to the new grid and navigation changes.
+
+
+--- 
+## [2.5.6] - 2025-12-16 (Pontanares)
+
+### Changed
+- Refactored and updated core UI components and forms for improved consistency and usability.
+- **SignupForm** & **SignupView** — enhanced registration flow with role selection (Tenant / Property Manager), real-time password validation with visual feedback, Terms & Privacy links, loading indicators, and SnackBars.
+- **LoginForm** — improved email/password validation, role-based navigation, and error handling.
+- **Navbar** & **Logo** — updated layout, responsive behavior, back button handling, and branding improvements.
+- **SearchFilter** & **AdvancedFilter** — refined multi-select property filters with dynamic search and live updates; supports amenities, room type, price range, and availability.
+- **Listing** & **Footer** components — updated property card layout, styling, and footer links.
+- **PasswordNotification** — enhanced visual feedback and dynamic updates during password input.
+- Shared **COLORS** palette — centralized and standardized reusable colors, borders, and typography for consistent UI styling.
+
+
+
+
+---
 ## [2.5.5] - 2025-12-16 (Enimedez)
 
 ### Changed
