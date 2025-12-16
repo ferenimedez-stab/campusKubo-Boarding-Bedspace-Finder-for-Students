@@ -10,14 +10,21 @@ from typing import Callable, Optional, Dict, Any
 class AdvancedFilters:
     """Advanced filter panel with price range, location, and amenity selectors"""
 
-    def __init__(self, on_apply: Callable[[Dict], None], on_clear: Callable[[], None]):
+    def __init__(self, page_or_on_apply: Callable[[Dict], None] | None = None, on_clear: Callable[[], None] | None = None):
+        # Allow calling AdvancedFilters(page) in tests — provide no-op callbacks
+        if callable(page_or_on_apply):
+            self.on_apply = page_or_on_apply
+            self.on_clear = on_clear or (lambda: None)
+        else:
+            self.on_apply = (lambda _: None)
+            self.on_clear = (lambda: None)
         """
         Args:
             on_apply: Callback(filters_dict) when Apply is clicked
             on_clear: Callback() when Clear is clicked
         """
-        self.on_apply = on_apply
-        self.on_clear = on_clear
+        # values already set above; keep backward-compatible defaults here
+        pass
 
         # Filter input fields
         self.price_min = ft.TextField(
@@ -233,3 +240,7 @@ class AdvancedFilters:
             "amenities": self.amenities_dropdown.value if self.amenities_dropdown.value else None,
             "availability": self.availability_dropdown.value if self.availability_dropdown.value and self.availability_dropdown.value != "All" else None,
         }
+
+    def build(self) -> ft.Container:
+        """Compatibility: return the sidebar container via `.build()`"""
+        return self.build_sidebar()

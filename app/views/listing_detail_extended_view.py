@@ -7,6 +7,7 @@ Complements existing listing_detail_view.py with enhanced UX.
 import flet as ft
 from services.listing_service import ListingService
 from state.session_state import SessionState
+from utils.navigation import go_back
 
 
 class ListingDetailExtendedView:
@@ -62,13 +63,26 @@ class ListingDetailExtendedView:
 
         # Action button logic
         def on_action_click(e):
+            print(f"[DEBUG] on_action_click - is_logged_in={is_logged_in}")
             if not is_logged_in:
                 show_auth_dialog()
             else:
-                snack = ft.SnackBar(content=ft.Text("Reservation feature coming soon!"))
-                self.page.overlay.append(snack)
-                snack.open = True
-                self.page.update()
+                # Check user role
+                user_role = self.session.get_role()
+                print(f"[DEBUG] on_action_click - user_role={user_role}")
+                if user_role == "tenant":
+                    # Redirect tenant to dashboard for reservation
+                    self.page.go("/reservations")
+                    snack = ft.SnackBar(content=ft.Text("Redirecting to dashboard for reservation..."))
+                    self.page.overlay.append(snack)
+                    snack.open = True
+                    self.page.update()
+                else:
+                    # For other roles, show coming soon message
+                    snack = ft.SnackBar(content=ft.Text("Reservation feature coming soon!"))
+                    self.page.overlay.append(snack)
+                    snack.open = True
+                    self.page.update()
 
         def show_auth_dialog():
             """Show dialog prompting sign-up/login"""
@@ -131,7 +145,7 @@ class ListingDetailExtendedView:
             alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
             controls=[
                 ft.Row([
-                    ft.IconButton(icon=ft.Icons.ARROW_BACK, on_click=lambda _: self.page.go("/browse")),
+                    ft.IconButton(icon=ft.Icons.ARROW_BACK, on_click=lambda _: go_back(self.page)),
                     Logo(size=22),
                 ]),
                 ft.Row([

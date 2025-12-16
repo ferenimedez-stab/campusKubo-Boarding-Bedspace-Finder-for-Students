@@ -6,6 +6,7 @@ import flet as ft
 import os
 from components.profile_section import ProfileSection
 from components.logo import Logo
+from components.sidebar import Sidebar
 
 
 def _resolve_profile_image_path(user_id: int | None) -> str | None:
@@ -75,6 +76,7 @@ class DashboardNavBar:
         page: ft.Page,
         title: str,
         user_email: str,
+        role: str = "admin",
         show_add_button: bool = False,
         on_add_click=None,
         on_logout=None
@@ -82,9 +84,11 @@ class DashboardNavBar:
         self.page = page
         self.title = title
         self.user_email = user_email
+        self.role = role
         self.show_add_button = show_add_button
         self.on_add_click = on_add_click
         self.on_logout = on_logout
+        self.sidebar = Sidebar(self.page, self.role)
 
     def view(self):
         # Logo section
@@ -132,8 +136,8 @@ class DashboardNavBar:
                 border_radius=6,
                 clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
                 content=ft.Image(src=profile_image_path, width=40, height=40, fit=ft.ImageFit.COVER),
-                on_click=_open_profile,
-                tooltip="My Profile",
+                on_click=self.sidebar.open_sidebar,
+                tooltip="Open menu",
             )
         else:
             avatar = ft.Container(
@@ -145,8 +149,8 @@ class DashboardNavBar:
                     alignment=ft.MainAxisAlignment.CENTER,
                     controls=[ft.Text(initials, color="white", weight=ft.FontWeight.BOLD)],
                 ),
-                on_click=_open_profile,
-                tooltip="My Profile",
+                on_click=self.sidebar.open_sidebar,
+                tooltip="Open menu",
             )
 
         logo_section = ft.Row(

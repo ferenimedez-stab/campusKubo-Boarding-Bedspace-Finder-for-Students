@@ -6,8 +6,11 @@ Updated from main.py property_details_view implementation
 Property details view with earthy color palette
 """
 import flet as ft
-from storage.db import get_property_by_id
+from datetime import datetime, timedelta
+from storage.db import get_property_by_id, create_reservation, get_listing_availability
+from components.reservation_form import ReservationForm
 from config.colors import COLORS
+from utils.navigation import go_back
 
 
 class PropertyDetailView:
@@ -16,6 +19,9 @@ class PropertyDetailView:
     def __init__(self, page: ft.Page):
         self.page = page
         self.colors = COLORS
+
+    def go_back(self, e):
+        go_back(self.page, "/browse")
 
     def build(self):
         """Build property details view - matching model"""
@@ -44,13 +50,85 @@ class PropertyDetailView:
             return
 
         def handle_action_button(e):
-            # Check if user is logged in
+            # Show inline reservation dialog for tenants to avoid role-based redirects
             user_role = self.page.session.get("role")
+            print(f"[DEBUG] handle_action_button clicked - role={user_role}, selected_property_id={property_id}")
             if not user_role:
-                # Show dialog prompting sign-up/login
                 show_auth_dialog()
+                return
+
+            # Inline dialog helpers
+            def show_reservation_dialog(listing_id: int):
+                print(f"[DEBUG] show_reservation_dialog called with listing_id={listing_id}")
+                availability = []
+                try:
+                    rows = get_listing_availability(listing_id)
+                    for r in rows:
+                        try:
+                            s = datetime.fromisoformat(str(r['start_date']))
+                            t = datetime.fromisoformat(str(r['end_date']))
+                            availability.append((s, t))
+                        except Exception:
+                            pass
+                except Exception:
+                    availability = []
+
+                # Use ReservationForm component for date selection and submission
+                error_text = ft.Text("", color=ft.Colors.RED)
+
+                def on_submit_handler(listing_id_param, start_dt, end_dt, msg_control):
+                    print(f"[DEBUG] ReservationForm submitted - listing={listing_id_param}, start={start_dt}, end={end_dt}")
+                    tenant_id = self.page.session.get('user_id')
+                    if not tenant_id:
+                        msg_control.value = "You must be logged in to reserve"
+                        self.page.update()
+                        return
+
+                    res = create_reservation(listing_id_param, tenant_id, start_dt.strftime('%Y-%m-%d'), end_dt.strftime('%Y-%m-%d'))
+                    print(f"[DEBUG] create_reservation returned: {res}")
+                    if res:
+                        self.page.snack_bar = ft.SnackBar(ft.Text('Reservation created!'), bgcolor=ft.Colors.GREEN)
+                        self.page.snack_bar.open = True
+                        try:
+                            self.page.close(dlg)
+                        except Exception:
+                            pass
+                        self.page.update()
+                    else:
+                        msg_control.value = "Failed to create reservation"
+                        self.page.update()
+
+                form = ReservationForm(self.page, listing_id, on_submit=on_submit_handler)
+                form_ui = form.build()
+
+                dlg = ft.AlertDialog(
+                    modal=True,
+                    title=ft.Text('Reserve Property'),
+                    content=ft.Column([
+                        ft.Text("Select your reservation dates:", size=16),
+                        form_ui
+                    ], tight=True),
+                    actions=[
+                        ft.TextButton('Cancel', on_click=lambda ev: (print("[DEBUG] Cancel button clicked - closing dialog"), self.page.close(dlg))),
+                    ]
+                )
+                print(f"[DEBUG] Created AlertDialog with ReservationForm")
+                try:
+                    self.page.open(dlg)
+                    print(f"[DEBUG] self.page.open(dlg) called successfully - dialog should be visible now")
+                    self.page.update()
+                except Exception as e:
+                    print(f"[DEBUG] Exception in self.page.open(dlg): {e}")
+                    import traceback
+                    traceback.print_exc()
+
+            # If tenant, open dialog inline. Otherwise show coming-soon snackbar.
+            if user_role == 'tenant':
+                try:
+                    show_reservation_dialog(property_id)
+                except Exception as ex:
+                    self.page.snack_bar = ft.SnackBar(ft.Text(f"Error: {ex}"), bgcolor=self.colors['error']); self.page.snack_bar.open = True; self.page.update()
             else:
-                # Proceed with reservation
                 snack_bar = ft.SnackBar(
                     ft.Text("Reservation feature coming soon!", color=self.colors["card_bg"]),
                     bgcolor=self.colors["accent"]
@@ -142,7 +220,7 @@ class PropertyDetailView:
                     ft.Row([
                         ft.IconButton(
                             icon=ft.Icons.ARROW_BACK,
-                            on_click=lambda _: self.page.go(self.page.session.get("property_source") or "/"),
+                            on_click=self.go_back,
                             icon_color=self.colors["primary"],
                             tooltip="Back"
                         ),

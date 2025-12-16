@@ -102,14 +102,14 @@ class SignupView:
                 req_special,
             ]
         )
-        
+
         def validate_password_live(e):
             """Real-time password validation with visual feedback"""
             pwd = password.value or ""
             password_requirements.visible = True
             # Clear error text when typing
             password.error_text = ""
-            
+
             # Check each requirement
             has_length = len(pwd) >= 8
             has_uppercase = any(c.isupper() for c in pwd)
@@ -160,7 +160,7 @@ class SignupView:
             on_change=lambda e: setattr(e.control, 'error_text', '')
         )
 
-        # Terms checkbox 
+        # Terms checkbox
         agree = ft.Checkbox(
             value=False,
             active_color=self.colors["primary"]
@@ -216,7 +216,7 @@ class SignupView:
             email.error_text = ""
             password.error_text = ""
             confirm_pw.error_text = ""
-            
+
             loading.visible = True
             self.page.update()
 
@@ -259,12 +259,15 @@ class SignupView:
 
             # Check terms agreement
             if not agree.value:
-                self.page.show_snack_bar(
-                    ft.SnackBar(
-                        content=ft.Text("❌ You must agree to the Terms and Conditions"),
-                        bgcolor=self.colors["error"],
-                    )
+                sb = ft.SnackBar(
+                    content=ft.Text("❌ You must agree to the Terms and Conditions"),
+                    bgcolor=self.colors["error"],
                 )
+                show_snack = getattr(self.page, "show_snack_bar", None)
+                if callable(show_snack):
+                    show_snack(sb)
+                else:
+                    self.page.open(sb)
                 loading.visible = False
                 loading.update()
                 return
@@ -299,17 +302,20 @@ class SignupView:
 
             if success:
                 # Show success message
-                self.page.show_snack_bar(
-                    ft.SnackBar(
-                        content=ft.Text(
-                            f"✅ {message}!\n"
-                            f"A confirmation email has been sent to {email.value}.\n"
-                            "You may now log in."
-                        ),
-                        bgcolor=self.colors["success"],
-                        duration=5000,
-                    )
+                sb = ft.SnackBar(
+                    content=ft.Text(
+                        f"✅ {message}!\n"
+                        f"A confirmation email has been sent to {email.value}.\n"
+                        "You may now log in."
+                    ),
+                    bgcolor=self.colors["success"],
+                    duration=5000,
                 )
+                show_snack = getattr(self.page, "show_snack_bar", None)
+                if callable(show_snack):
+                    show_snack(sb)
+                else:
+                    self.page.open(sb)
 
                 # Clear form after successful registration
                 full_name.value = ""
@@ -318,26 +324,29 @@ class SignupView:
                 confirm_pw.value = ""
                 agree.value = False
                 password_requirements.visible = False
-                
+
                 full_name.update()
                 email.update()
                 password.update()
                 confirm_pw.update()
                 agree.update()
                 password_requirements.update()
-                
+
                 # Redirect to login after 2 seconds
                 import time
                 time.sleep(2)
                 self.page.go("/login")
             else:
                 # Show error message
-                self.page.show_snack_bar(
-                    ft.SnackBar(
-                        content=ft.Text(f"❌ {message}"),
-                        bgcolor=self.colors["error"],
-                    )
+                sb = ft.SnackBar(
+                    content=ft.Text(f"❌ {message}"),
+                    bgcolor=self.colors["error"],
                 )
+                show_snack = getattr(self.page, "show_snack_bar", None)
+                if callable(show_snack):
+                    show_snack(sb)
+                else:
+                    self.page.open(sb)
 
             loading.update()
 

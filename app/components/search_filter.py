@@ -40,12 +40,13 @@ class SearchFilter:
                 )
             )
 
-        return ft.Row(
+        row = ft.Row(
             alignment=ft.MainAxisAlignment.CENTER,
             spacing=12,
             wrap=True,
             controls=filter_buttons
         )
+        return ft.Container(content=row)
 
 
 def _choose_icon(label: str):

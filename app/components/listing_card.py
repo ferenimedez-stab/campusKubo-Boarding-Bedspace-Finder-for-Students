@@ -489,7 +489,7 @@ class ListingCard:
 
     def __init__(
         self,
-        listing: Listing,
+        *args,
         image_url: str = "",
         is_available: bool = True,
         on_click: ActionHandler = None,
@@ -497,8 +497,20 @@ class ListingCard:
         on_edit: ActionHandler = None,
         on_delete: ActionHandler = None,
         layout: str = "vertical",
+        **kwargs,
     ):
-        self.listing = listing
+        # Support both signatures: (listing, ...) and (page, listing)
+        first = args[0] if args else None
+        second = args[1] if len(args) > 1 else None
+        if first is not None and hasattr(first, "session") and second is not None:
+            # signature: (page, listing, ...)
+            self.page = first
+            self.listing = second
+        else:
+            # signature: (listing, ...)
+            self.page = None
+            self.listing = first
+
         self.image_url = image_url
         self.is_available = is_available
         self.on_click = on_click
@@ -525,4 +537,7 @@ class ListingCard:
             show_save_button=not self.show_actions,
             on_click=self.on_click,
         )
+
+    def build(self):
+        return self.build_card()
 

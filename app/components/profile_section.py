@@ -206,6 +206,10 @@ class ProfileSection:
             ],
         )
 
+    def build(self) -> ft.Container:
+        """Return a container that wraps the tabbed profile UI"""
+        return ft.Container(content=self.get_tabbed_view())
+
     # --- Dialogs/actions wired to UserService ---
     def show_edit_profile_dialog(self):
         first_name_field = ft.TextField(label="First Name", value=self.state.first_name)

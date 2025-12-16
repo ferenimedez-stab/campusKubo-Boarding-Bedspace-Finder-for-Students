@@ -3,6 +3,7 @@ Terms and Conditions view
 """
 import flet as ft
 from config.colors import COLORS
+from utils.navigation import go_back
 
 
 class TermsView:
@@ -15,7 +16,7 @@ class TermsView:
     def build(self):
         return ft.View(
             "/terms",
-            bgcolor=self.colors["card_bg"], 
+            bgcolor=self.colors["card_bg"],
             controls=[
                 ft.Container(
                     width=750,
@@ -36,6 +37,11 @@ class TermsView:
                                 padding=20,
                                 content=ft.Row(
                                     controls=[
+                                        ft.IconButton(
+                                            icon=ft.Icons.ARROW_BACK,
+                                            tooltip="Back",
+                                            on_click=lambda _: go_back(self.page, "/")
+                                        ),
                                         ft.Icon(
                                             ft.Icons.DESCRIPTION_OUTLINED,
                                             color=self.colors["primary"],
@@ -59,11 +65,12 @@ class TermsView:
                                         ),
                                     ],
                                     alignment=ft.MainAxisAlignment.START,
+                                    spacing=12,
                                 ),
                             ),
-                            
+
                             ft.Divider(height=1, color=self.colors["border"]),
-                            
+
                             # Scrollable content
                             ft.Container(
                                 expand=True,
@@ -78,7 +85,7 @@ class TermsView:
                                             weight=ft.FontWeight.BOLD,
                                             color=self.colors["text_dark"]
                                         ),
-                                        
+
                                         ft.Text("1. Introduction", size=16, weight=ft.FontWeight.BOLD, color=self.colors["text_dark"]),
                                         ft.Text(
                                             "By accessing and using CampusKubo, you accept and agree to be bound by the terms and provision of this agreement. Do not continue to use CampusKubo if you do not agree to take all of the terms and conditions stated on this page.",
@@ -132,9 +139,9 @@ class TermsView:
                                     ],
                                 ),
                             ),
-                            
+
                             ft.Divider(height=1, color=self.colors["border"]),
-                            
+
                             # Footer buttons
                             ft.Container(
                                 padding=20,
